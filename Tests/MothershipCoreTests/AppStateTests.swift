@@ -60,6 +60,11 @@ private func makeState(
         #expect(state.configError == nil)
     }
 
+    @Test func testReloadExposesParsedConfigForDisplay() throws {
+        let (state, _) = try makeState(tmux: FakeTmux())
+        #expect(state.config.projects.first?.commands.map(\.run) == ["npm run dev", "php artisan queue:work"])
+    }
+
     @Test func testReloadWithDeletedFileSetsError() throws {
         let (state, url) = try makeState(tmux: FakeTmux())
         try FileManager.default.removeItem(at: url)

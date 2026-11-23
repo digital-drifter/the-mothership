@@ -5,6 +5,8 @@ import Observation
 public final class AppState {
     public private(set) var sections: [ProjectSection] = []
     public private(set) var configError: String?
+    /// The last config that parsed; kept when a later edit breaks the file.
+    public private(set) var config = MothershipConfig(projects: [])
     public var actionError: String?
 
     @ObservationIgnored private let tmux: TmuxCommanding
@@ -14,7 +16,6 @@ public final class AppState {
     @ObservationIgnored private let stopGracePeriod: Duration
     @ObservationIgnored private let signalProcessGroup: (Int32) -> Void
     @ObservationIgnored private let directoryExists: (String) -> Bool
-    @ObservationIgnored private var config = MothershipConfig(projects: [])
     @ObservationIgnored private var panes: [PaneInfo] = []
     /// Names handed out by in-flight creates, so concurrent creates never pick the same number.
     @ObservationIgnored private var pendingNames: [String: Set<String>] = [:]
