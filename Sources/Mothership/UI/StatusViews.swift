@@ -82,6 +82,7 @@ private struct Banner<Content: View, Trailing: View>: View {
         }
         .padding(10)
         .background(tint.opacity(0.12))
+        .background(.bar)  // opaque, since banners float over the terminal
         .overlay(alignment: .bottom) { Divider() }
     }
 }

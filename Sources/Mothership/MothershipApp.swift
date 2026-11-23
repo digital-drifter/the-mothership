@@ -52,15 +52,19 @@ private struct MainView: View {
             SidebarView(state: state, navigation: navigation)
                 .navigationSplitViewColumnWidth(min: 200, ideal: 240)
         } detail: {
-            VStack(spacing: 0) {
-                if let configError = state.configError {
-                    ConfigErrorBanner(message: configError, configURL: configURL)
+            DetailView(item: selected?.item, section: selected?.section, state: state, terminals: terminals)
+                // Overlays, so a banner coming or going never resizes the terminal (SIGWINCH, and a
+                // reconnect must seed the view at the size tmux captured).
+                .overlay(alignment: .top) {
+                    VStack(spacing: 0) {
+                        if let configError = state.configError {
+                            ConfigErrorBanner(message: configError, configURL: configURL)
+                        }
+                        if let actionError = state.actionError {
+                            ActionErrorBanner(message: actionError) { state.actionError = nil }
+                        }
+                    }
                 }
-                if let actionError = state.actionError {
-                    ActionErrorBanner(message: actionError) { state.actionError = nil }
-                }
-                DetailView(item: selected?.item, section: selected?.section, state: state, terminals: terminals)
-            }
         }
     }
 
