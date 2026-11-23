@@ -28,11 +28,6 @@ final class PaneTerminalView: TerminalView {
         responseGate.whileFeeding { feed(byteArray: bytes) }
     }
 
-    /// Feeds text from the app itself (e.g. a reset) under the same rule as pane output.
-    func feedOutput(text: String) -> Void {
-        responseGate.whileFeeding { feed(text: text) }
-    }
-
     /// Replies the emulator generates. tmux already answered every query in the pane's output, so
     /// replies produced while that output is parsed are dropped; mouse and focus reports pass.
     nonisolated override func send(source: Terminal, data: ArraySlice<UInt8>) -> Void {

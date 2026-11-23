@@ -165,7 +165,14 @@ private func makeStream() -> (FakeChannel, PaneStream, ByteLog) {
 
     @Test func testSeedForNormalScreenPlacesCursor() -> Void {
         let snapshot = PaneSnapshot(historyAndScreen: ["$ ls", "a b"], cursorX: 2, cursorY: 1)
-        #expect(SeedBuilder.build(snapshot) == bytes("\u{1b}[0m$ ls\r\na b\u{1b}[2;3H"))
+        #expect(SeedBuilder.build(snapshot) == bytes("\u{1b}c\u{1b}[?25h$ ls\r\na b\u{1b}[2;3H"))
+    }
+
+    @Test func testSeedStartsWithAFullResetSoItReplacesWhateverWasShown() -> Void {
+        // A seed is also fed into a view that already shows the pane (after a respawn or reconnect):
+        // RIS drops the old screen, scrollback and modes; RIS keeps cursor visibility, so show it.
+        let seed = String(decoding: SeedBuilder.build(PaneSnapshot(historyAndScreen: ["x"], cursorX: 0, cursorY: 0)), as: UTF8.self)
+        #expect(seed.hasPrefix("\u{1b}c\u{1b}[?25h"))
     }
 
     @Test func testSeedForAlternateScreenSwitchesBuffers() -> Void {
@@ -174,7 +181,7 @@ private func makeStream() -> (FakeChannel, PaneStream, ByteLog) {
             savedCursorX: 4, savedCursorY: 2)
         let seed = String(decoding: SeedBuilder.build(snapshot), as: UTF8.self)
         // The saved normal-screen cursor is placed just before ?1049h saves it.
-        #expect(seed == "\u{1b}[0mhist\u{1b}[3;5H\u{1b}[?1049h\u{1b}[Halt1\r\nalt2\u{1b}[1;1H")
+        #expect(seed == "\u{1b}c\u{1b}[?25hhist\u{1b}[3;5H\u{1b}[?1049h\u{1b}[Halt1\r\nalt2\u{1b}[1;1H")
     }
 
     @Test func testSeedRestoresMouseAndKeypadModes() -> Void {

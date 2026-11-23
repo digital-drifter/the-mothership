@@ -100,6 +100,20 @@ private func makeState(
         #expect(!calls.contains { $0.first == "new-session" })
     }
 
+    @Test func testRefreshReportsRespawnedSessions() async throws -> Void {
+        let fake = FakeTmux()
+        await fake.script([
+            [pane("ms-es-cmd-vite", pid: 10, kind: .command, name: "Vite")],
+            [pane("ms-es-cmd-vite", pid: 11, kind: .command, name: "Vite")],
+        ])
+        let (state, _) = try makeState(tmux: fake)
+        var reported: [Set<String>] = []
+        state.onRespawn = { reported.append($0) }
+        await state.refresh()
+        await state.refresh()
+        #expect(reported == [["ms-es-cmd-vite"]])
+    }
+
     @Test func testStartInMissingFolderSetsErrorAndRunsNothing() async throws {
         let fake = FakeTmux()
         let (state, _) = try makeState(tmux: fake, folderOK: false)

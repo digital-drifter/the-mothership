@@ -57,6 +57,7 @@ final class AppLauncher {
             tmux: tmux.makeClient(), configURL: options.configURL,
             shell: environment["SHELL"] ?? "/bin/zsh", homeDirectory: NSHomeDirectory())
         let terminals = TerminalSessionCache(tmux: tmux)
+        state.onRespawn = { [weak terminals] names in terminals?.reseed(names) }
         self.tmux = tmux
         phase = .ready(state, terminals)
 

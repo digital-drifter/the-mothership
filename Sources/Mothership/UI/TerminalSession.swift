@@ -7,7 +7,8 @@ import SwiftTerm
 /// One tmux session shown natively: owns its control client, pane stream and terminal view.
 ///
 /// The client starts on the first `activate()` and stays attached until `close()`. If it fails or exits
-/// unexpectedly the session shows as disconnected; the next `activate()` resets the view and reattaches.
+/// unexpectedly the session shows as disconnected; the next `activate()` reattaches. Every seed starts with
+/// a full reset, so it replaces whatever the view showed before.
 @MainActor @Observable
 final class TerminalSession {
     let sessionName: String
@@ -20,7 +21,6 @@ final class TerminalSession {
     @ObservationIgnored private var client: ControlClient?
     @ObservationIgnored private var stream: PaneStream?
     @ObservationIgnored private var isAttached = false
-    @ObservationIgnored private var hasConnectedBefore = false
     /// Incremented per connection so callbacks from an old client are ignored.
     @ObservationIgnored private var generation = 0
 
@@ -71,13 +71,16 @@ final class TerminalSession {
             disconnectedMessage = "Could not start tmux: \(error.localizedDescription)"
             return
         }
-        if hasConnectedBefore {
-            // Drop the old screen and scrollback so the new seed doesn't duplicate them.
-            view.feedOutput(text: "\u{1b}c\u{1b}[?25h")
-        }
-        hasConnectedBefore = true
         self.client = client
         self.stream = stream
+        isAttached = false
+        attachIfReady()
+    }
+
+    /// Rebuilds the view from a fresh snapshot, e.g. after respawn-pane reset the pane without any output.
+    /// Not yet attached (no size or no client): the next attach seeds anyway.
+    func reseed() -> Void {
+        guard stream != nil, isAttached else { return }
         isAttached = false
         attachIfReady()
     }
@@ -158,6 +161,11 @@ final class TerminalSessionCache {
         let session = TerminalSession(sessionName: sessionName, tmux: tmux)
         sessions[sessionName] = session
         return session
+    }
+
+    /// Re-seeds the cached sessions among `sessionNames` (panes that were respawned).
+    func reseed(_ sessionNames: Set<String>) -> Void {
+        for name in sessionNames { sessions[name]?.reseed() }
     }
 
     /// Detaches and forgets every session not in `sessionNames`.

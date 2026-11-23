@@ -8,6 +8,9 @@ public final class AppState {
     /// The last config that parsed; kept when a later edit breaks the file.
     public private(set) var config = MothershipConfig(projects: [])
     public var actionError: String?
+    /// Called after a refresh with the sessions whose pane process was replaced since the last one.
+    /// respawn-pane resets a pane without emitting output, so a view showing it must be re-seeded.
+    @ObservationIgnored public var onRespawn: ((Set<String>) -> Void)?
 
     @ObservationIgnored private let tmux: TmuxCommanding
     @ObservationIgnored private let configURL: URL
@@ -17,6 +20,7 @@ public final class AppState {
     @ObservationIgnored private let signalProcessGroup: (Int32) -> Void
     @ObservationIgnored private let directoryExists: (String) -> Bool
     @ObservationIgnored private var panes: [PaneInfo] = []
+    @ObservationIgnored private var respawns = RespawnTracker()
     /// Names handed out by in-flight creates, so concurrent creates never pick the same number.
     @ObservationIgnored private var pendingNames: [String: Set<String>] = [:]
 
@@ -61,6 +65,8 @@ public final class AppState {
         do {
             panes = try await tmux.listPanes()
             rebuildSections()
+            let respawned = respawns.update(panes)
+            if !respawned.isEmpty { onRespawn?(respawned) }
         } catch {
             report(error)
         }

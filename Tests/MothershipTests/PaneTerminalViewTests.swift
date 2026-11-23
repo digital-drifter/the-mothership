@@ -1,6 +1,7 @@
 import AppKit
 import SwiftTerm
 import Testing
+import MothershipCore
 @testable import Mothership
 
 /// Records what the terminal view would send to the pane.
@@ -56,5 +57,29 @@ private func drainMainQueue() async throws -> Void {
         try await drainMainQueue()
         // X10 mouse report for a left press in the top-left cell: ESC [ M, button 0, column 1, row 1.
         #expect(recorder.sent == [[0x1b, 0x5b, 0x4d, 32, 33, 33]])
+    }
+}
+
+@Suite @MainActor struct PaneTerminalViewSeedTests {
+    @Test func testReseedAfterRespawnDropsAlternateScreenAndMouseModes() async throws -> Void {
+        let (view, recorder) = makeView()
+        let window = NSWindow(contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: true)
+        window.contentView = view
+        // The pane was running a full-screen program with mouse reporting on...
+        view.feedOutput(SeedBuilder.build(PaneSnapshot(
+            historyAndScreen: ["$ vim"], alternateScreen: ["~ VIM"], cursorX: 0, cursorY: 0,
+            mouseStandard: true, mouseSGR: true))[...])
+        // ...then respawn-pane reset it, and the reseed shows a fresh shell.
+        view.feedOutput(SeedBuilder.build(PaneSnapshot(historyAndScreen: ["$ "], cursorX: 2, cursorY: 0))[...])
+        let click = try #require(NSEvent.mouseEvent(
+            with: .leftMouseDown, location: NSPoint(x: 4, y: view.frame.height - 4), modifierFlags: [],
+            timestamp: 0, windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1,
+            pressure: 1))
+        view.mouseDown(with: click)
+        try await drainMainQueue()
+        #expect(recorder.sent.isEmpty)
+        let text = String(decoding: view.getBufferAsData(kind: .normal), as: UTF8.self)
+        #expect(!String(decoding: view.getBufferAsData(kind: .active), as: UTF8.self).contains("VIM"))
+        #expect(!text.contains("vim"))
     }
 }

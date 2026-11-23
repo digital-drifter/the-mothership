@@ -95,9 +95,11 @@ private func occurrences(of needle: String, in haystack: String) -> Int {
     haystack.components(separatedBy: needle).count - 1
 }
 
-/// The seed's lines (without the leading SGR reset and trailing cursor/mode sequences).
+private let seedReset = "\u{1b}c\u{1b}[?25h"
+
+/// The seed's lines (without the leading reset and trailing cursor/mode sequences).
 private func seedLines(_ seed: String) -> [String] {
-    var body = seed.hasPrefix("\u{1b}[0m") ? String(seed.dropFirst(4)) : seed
+    var body = seed.hasPrefix(seedReset) ? String(seed.dropFirst(seedReset.count)) : seed
     if let cursor = body.range(of: "\u{1b}\\[[0-9]+;[0-9]+H", options: [.regularExpression, .backwards]) {
         body = String(body[..<cursor.lowerBound])
     }
@@ -106,7 +108,7 @@ private func seedLines(_ seed: String) -> [String] {
 
 /// The text a terminal holds before the cursor after drawing a normal-screen seed of `rows` rows.
 private func seedTextBeforeCursor(_ seed: String, rows: Int) -> String? {
-    var body = seed.hasPrefix("\u{1b}[0m") ? String(seed.dropFirst(4)) : seed
+    var body = seed.hasPrefix(seedReset) ? String(seed.dropFirst(seedReset.count)) : seed
     guard let cursor = body.range(of: "\u{1b}\\[[0-9]+;[0-9]+H", options: [.regularExpression, .backwards]) else { return nil }
     let position = body[cursor].dropFirst(2).dropLast().split(separator: ";").compactMap { Int($0) }
     body = String(body[..<cursor.lowerBound])

@@ -99,8 +99,14 @@ public enum SeedBuilder {
             mouseSGR: numbers[11] == 1)
     }
 
+    /// A full reset (RIS) that also shows the cursor, which RIS leaves as it was.
+    static let reset: String = "\u{1b}c\u{1b}[?25h"
+
+    /// Bytes that make a terminal show the snapshot. They start with a full reset, so feeding them into a
+    /// view that already shows the pane (after a respawn or a reconnect) replaces its screen, scrollback
+    /// and modes, as well as anything fed into it since.
     public static func build(_ snapshot: PaneSnapshot) -> [UInt8] {
-        var seed = "\u{1b}[0m" + snapshot.historyAndScreen.joined(separator: "\r\n")
+        var seed = reset + snapshot.historyAndScreen.joined(separator: "\r\n")
         if let alternate = snapshot.alternateScreen {
             // ?1049h saves the cursor; put it where tmux saved it so leaving the alternate screen restores it.
             seed += "\u{1b}[\(snapshot.savedCursorY + 1);\(snapshot.savedCursorX + 1)H"
