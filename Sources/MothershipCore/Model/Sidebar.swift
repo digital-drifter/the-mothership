@@ -118,11 +118,12 @@ public enum AutostartPlanner {
     public static func commandsToStart(
         config: MothershipConfig, panes: [PaneInfo]
     ) -> [(project: ProjectConfig, command: CommandConfig)] {
-        let existing = Set(panes.map(\.sessionName))
+        // Commands without a live session: never started, or dead (start() respawns those).
+        let live = Set(panes.filter { !$0.isDead }.map(\.sessionName))
         return config.projects.flatMap { project in
             project.commands
                 .filter { $0.autostart }
-                .filter { !existing.contains(SessionName.make(projectSlug: project.slug, kind: .command, id: $0.slug)) }
+                .filter { !live.contains(SessionName.make(projectSlug: project.slug, kind: .command, id: $0.slug)) }
                 .map { (project: project, command: $0) }
         }
     }

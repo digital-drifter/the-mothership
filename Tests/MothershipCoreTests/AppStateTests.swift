@@ -197,6 +197,17 @@ private func makeState(
         #expect(creates[0].contains("ms-es-cmd-vite"))
     }
 
+    @Test func testRunAutostartRespawnsADeadCommandWithItsCurrentConfig() async throws -> Void {
+        let fake = FakeTmux(panes: [pane("ms-es-cmd-vite", dead: true, kind: .command, name: "Vite")])
+        let (state, _) = try makeState(tmux: fake)
+        await state.runAutostart()
+        let calls = await fake.calls
+        #expect(calls.contains([
+            "respawn-pane", "-k", "-c", "/Users/test/Code/es", "-t", "ms-es-cmd-vite", "/bin/zsh", "-lc", "npm run dev",
+        ]))
+        #expect(!calls.contains { $0.first == "new-session" })
+    }
+
     @Test func testUnknownSessionSetsActionError() async throws {
         let fake = FakeTmux()
         let (state, _) = try makeState(tmux: fake)

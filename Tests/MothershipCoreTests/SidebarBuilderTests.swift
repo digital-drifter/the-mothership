@@ -102,15 +102,15 @@ struct SidebarBuilderTests {
         #expect(agents[0].status == .exited(code: 0))
     }
 
-    @Test func testAutostartSkipsRunningAndDeadSessions() -> Void {
+    @Test func testAutostartSkipsRunningSessionsButStartsDeadOnes() -> Void {
         let auto3 = CommandConfig(name: "Mail", slug: "mail", run: "mailpit", autostart: true)
         let panes = [
             pane("ms-app-cmd-vite", kind: .command),
             pane("ms-app-cmd-horizon", kind: .command, dead: true, status: 1),
         ]
         let result = AutostartPlanner.commandsToStart(config: config([vite, horizon, auto3]), panes: panes)
-        #expect(result.map(\.command.slug) == ["mail"])
-        #expect(result.map(\.project.slug) == ["app"])
+        #expect(result.map(\.command.slug) == ["horizon", "mail"])
+        #expect(result.map(\.project.slug) == ["app", "app"])
     }
 
     @Test func testAutostartIgnoresNonAutostartCommands() -> Void {
