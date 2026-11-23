@@ -115,3 +115,22 @@ projects:
     try ConfigLoader.ensureExists(at: url)
     #expect(try String(contentsOf: url, encoding: .utf8) == "edited")
 }
+
+@Test func testControlCharactersInNamesBecomeSpaces() throws -> Void {
+    // Names end up in tmux's tab-separated, line-based list-panes output, so they must not hold either.
+    let yaml = """
+    projects:
+      - name: "Event\\tSprout"
+        path: ~/Code/es
+        commands:
+          - name: "Vite\\ndev"
+            run: npm run dev
+        agents:
+          - name: "Claude\\u0007Code"
+            run: claude
+    """
+    let project = try #require(try ConfigLoader.parse(yaml, homeDirectory: home).projects.first)
+    #expect(project.name == "Event Sprout")
+    #expect(project.commands.map(\.name) == ["Vite dev"])
+    #expect(project.agents.map(\.name) == ["Claude Code"])
+}

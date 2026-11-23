@@ -63,13 +63,13 @@ public enum ConfigLoader {
         var projects: [ProjectConfig] = []
         for (pIndex, rawProject) in (raw.projects ?? []).enumerated() {
             let prefix = "projects[\(pIndex)]"
-            let name = try required(rawProject.name, "\(prefix).name")
+            let name = DisplayName.clean(try required(rawProject.name, "\(prefix).name"))
             let path = try required(rawProject.path, "\(prefix).path")
 
             var commands: [CommandConfig] = []
             for (cIndex, rawCommand) in (rawProject.commands ?? []).enumerated() {
                 let cPrefix = "\(prefix).commands[\(cIndex)]"
-                let cName = try required(rawCommand.name, "\(cPrefix).name")
+                let cName = DisplayName.clean(try required(rawCommand.name, "\(cPrefix).name"))
                 let run = try required(rawCommand.run, "\(cPrefix).run")
                 commands.append(CommandConfig(
                     name: cName, slug: Slug.make(cName), run: run, autostart: rawCommand.autostart ?? false
@@ -79,7 +79,7 @@ public enum ConfigLoader {
             var agents: [AgentTemplate] = []
             for (aIndex, rawAgent) in (rawProject.agents ?? []).enumerated() {
                 let aPrefix = "\(prefix).agents[\(aIndex)]"
-                let aName = try required(rawAgent.name, "\(aPrefix).name")
+                let aName = DisplayName.clean(try required(rawAgent.name, "\(aPrefix).name"))
                 let run = try required(rawAgent.run, "\(aPrefix).run")
                 agents.append(AgentTemplate(name: aName, run: run))
             }

@@ -324,6 +324,14 @@ private func makeState(
         #expect(calls.last?.first == "list-panes")
     }
 
+    @Test func testRenameReplacesControlCharactersWithSpaces() async throws -> Void {
+        let fake = FakeTmux(panes: [pane("ms-es-term-aaaaaa", kind: .terminal, name: "Terminal 1")])
+        let (state, _) = try makeState(tmux: fake)
+        await state.refresh()
+        await state.rename(sessionName: "ms-es-term-aaaaaa", to: "Lo\tgs\r\nnow")
+        #expect(await fake.calls.contains(["set-option", "-t", "=ms-es-term-aaaaaa:", "@ms_name", "Lo gs  now"]))
+    }
+
     @Test func testStopAllKillsServerAndRefreshes() async throws -> Void {
         let fake = FakeTmux()
         let (state, _) = try makeState(tmux: fake)

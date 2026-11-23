@@ -146,7 +146,7 @@ public final class AppState {
     public func rename(sessionName: String, to name: String) async -> Void {
         guard knows(sessionName) else { return }
         do {
-            try await tmux.setName(session: sessionName, name: name)
+            try await tmux.setName(session: sessionName, name: DisplayName.clean(name))
         } catch {
             report(error)
         }
