@@ -15,7 +15,7 @@ struct DetailView: View {
                 .navigationTitle(item.displayName)
                 .navigationSubtitle(section.name)
         } else {
-            if state.sections.isEmpty {
+            if state.config.projects.isEmpty {
                 ContentUnavailableView {
                     Label("No projects yet", systemImage: "folder.badge.plus")
                 } description: {

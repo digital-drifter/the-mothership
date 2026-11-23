@@ -13,6 +13,7 @@ struct CustomAgentSheet: View {
     @State private var run = ""
     @State private var saveToList = false
     @State private var problem: String?
+    @State private var isWorking = false
 
     private var isBlank: Bool {
         name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -34,7 +35,7 @@ struct CustomAgentSheet: View {
                     .keyboardShortcut(.cancelAction)
                 Button("Start") { start() }
                     .keyboardShortcut(.defaultAction)
-                    .disabled(isBlank)
+                    .disabled(isBlank || isWorking)
             }
         }
         .padding(20)
@@ -49,6 +50,7 @@ struct CustomAgentSheet: View {
             }
             state.addAgentTemplate(name: name, run: run)
         }
+        isWorking = true
         Task {
             if let id = await state.newCustomAgent(projectSlug: projectSlug, name: name, run: run) { onStarted(id) }
             dismiss()

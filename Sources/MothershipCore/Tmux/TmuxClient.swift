@@ -97,6 +97,20 @@ extension TmuxCommanding {
         return ["no server running", "error connecting"].contains { error.message.contains($0) }
     }
 
+    private static func isMissingSession(_ error: TmuxError) -> Bool {
+        guard error.exitCode != -1 else { return false }
+        return error.message.contains("can't find session")
+    }
+
+    /// Kills the session; one that is already gone (or whose server is gone) counts as killed.
+    public func killSessionIfPresent(_ name: String) async throws -> Void {
+        do {
+            try await killSession(name)
+        } catch let error as TmuxError where Self.isMissingSession(error) || Self.isNoServer(error) {
+            return
+        }
+    }
+
     /// tmux treats an argument ending in `;` as a command separator. A backslash before that
     /// trailing `;` makes tmux keep the `;` and strip exactly one backslash, so always add one.
     static func escapeTrailingSemicolon(_ arg: String) -> String {

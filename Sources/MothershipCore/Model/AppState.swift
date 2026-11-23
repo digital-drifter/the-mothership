@@ -302,6 +302,20 @@ public final class AppState {
         }
     }
 
+    /// Kills every session, carrying on past failures. Sessions that are already gone count as killed;
+    /// the first other error is reported.
+    private func killSessions(_ sessions: [String]) async -> Void {
+        var firstError: Error?
+        for session in sessions {
+            do {
+                try await tmux.killSessionIfPresent(session)
+            } catch {
+                firstError = firstError ?? error
+            }
+        }
+        if let firstError { report(firstError) }
+    }
+
     private func rebuildSections() -> Void {
         sections = SidebarBuilder.build(config: config, panes: panes)
     }
@@ -348,9 +362,7 @@ extension AppState {
     public func removeProject(slug: String) async -> Void {
         guard commit({ $0.projects.removeAll { $0.slug == slug } }) else { return }
         do {
-            for pane in try await tmux.listPanes() where pane.project == slug {
-                try await tmux.killSession(pane.sessionName)
-            }
+            await killSessions(try await tmux.listPanes().filter { $0.project == slug }.map(\.sessionName))
         } catch {
             report(error)
         }
@@ -427,7 +439,7 @@ extension AppState {
         let session = SessionName.make(projectSlug: projectSlug, kind: .command, id: commandSlug)
         do {
             if try await tmux.listPanes().contains(where: { $0.sessionName == session }) {
-                try await tmux.killSession(session)
+                await killSessions([session])
             }
         } catch {
             report(error)

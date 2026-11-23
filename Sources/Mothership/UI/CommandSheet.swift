@@ -23,6 +23,7 @@ struct CommandSheet: View {
     @State private var run: String
     @State private var autostart: Bool
     @State private var problem: String?
+    @State private var isWorking = false
 
     init(state: AppState, projectSlug: String, editing: Editing?, onAdded: @escaping (String) -> Void) {
         self.state = state
@@ -54,6 +55,7 @@ struct CommandSheet: View {
                     .keyboardShortcut(.cancelAction)
                 Button("Save") { save() }
                     .keyboardShortcut(.defaultAction)
+                    .disabled(isWorking)
             }
         }
         .padding(20)
@@ -65,6 +67,7 @@ struct CommandSheet: View {
             problem = message
             return
         }
+        isWorking = true
         Task {
             if let editing {
                 await state.editCommand(

@@ -22,6 +22,8 @@ struct SidebarView: View {
                     rows(for: section)
                 } header: {
                     Text(section.name).opacity(section.isOrphan ? 0.5 : 1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
                         .contextMenu { if !section.isOrphan { projectMenu(section) } }
                 }
             }
@@ -143,7 +145,7 @@ struct SidebarView: View {
                     }
                 }
             }
-            Divider()
+            if !state.agents.isEmpty { Divider() }
             Button("Custom…") { sheet = .customAgent(projectSlug: section.id) }
             Button("Manage List…") { sheet = .manageAgents }
         } label: {

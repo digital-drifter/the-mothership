@@ -75,6 +75,49 @@ import Testing
         #expect(kills.count == 3)
     }
 
+    @Test func testRemoveProjectTreatsAMissingSessionAsKilledAndKeepsGoing() async throws -> Void {
+        let fake = FakeTmux(panes: [
+            makePane("ms-es-cmd-vite", kind: .command, name: "Vite"),
+            makePane("ms-es-agent-aaaaaa", kind: .agent, name: "Claude 1", template: "Claude"),
+            makePane("ms-es-term-bbbbbb", kind: .terminal, name: "Terminal 1"),
+        ])
+        await fake.fail(["kill-session", "-t", "=ms-es-cmd-vite:"], with: TmuxError(message: "can't find session: ms-es-cmd-vite", exitCode: 1))
+        let (state, _) = try makeState(tmux: fake)
+        await state.refresh()
+        await state.removeProject(slug: "es")
+        let kills = await fake.calls.filter { $0.first == "kill-session" }
+        #expect(kills.count == 3)
+        #expect(state.actionError == nil)
+    }
+
+    @Test func testRemoveProjectKeepsKillingAfterARealErrorAndReportsTheFirst() async throws -> Void {
+        let fake = FakeTmux(panes: [
+            makePane("ms-es-cmd-vite", kind: .command, name: "Vite"),
+            makePane("ms-es-agent-aaaaaa", kind: .agent, name: "Claude 1", template: "Claude"),
+            makePane("ms-es-term-bbbbbb", kind: .terminal, name: "Terminal 1"),
+        ])
+        await fake.fail(["kill-session", "-t", "=ms-es-cmd-vite:"], with: TmuxError(message: "permission denied", exitCode: 1))
+        await fake.fail(["kill-session", "-t", "=ms-es-term-bbbbbb:"], with: TmuxError(message: "second failure", exitCode: 1))
+        let (state, _) = try makeState(tmux: fake)
+        await state.refresh()
+        await state.removeProject(slug: "es")
+        let kills = await fake.calls.filter { $0.first == "kill-session" }
+        #expect(kills.count == 3)
+        #expect(state.actionError == "permission denied")
+    }
+
+    @Test func testDeleteCommandIgnoresAMissingSessionButReportsOtherErrors() async throws -> Void {
+        let fake = FakeTmux(panes: [makePane("ms-es-cmd-queue", kind: .command, name: "Queue")])
+        await fake.fail(["kill-session", "-t", "=ms-es-cmd-queue:"], with: TmuxError(message: "can't find session: ms-es-cmd-queue", exitCode: 1))
+        let (state, _) = try makeState(tmux: fake)
+        await state.refresh()
+        await state.deleteCommand(projectSlug: "es", commandSlug: "queue")
+        #expect(state.actionError == nil)
+        await fake.fail(["kill-session", "-t", "=ms-es-cmd-queue:"], with: TmuxError(message: "boom", exitCode: 1))
+        await state.deleteCommand(projectSlug: "es", commandSlug: "queue")
+        #expect(state.actionError == "boom")
+    }
+
     @Test func testAFailedSaveChangesNothing() async throws -> Void {
         let fake = FakeTmux()
         let (state, store) = try makeState(tmux: fake)
@@ -179,6 +222,10 @@ import Testing
         let calls = await fake.calls
         #expect(calls.contains(["set-option", "-t", "=ms-es-cmd-vite:", "@ms_name", "Vite Dev"]))
         #expect(!calls.contains { $0.first == "respawn-pane" || $0.first == "kill-session" })
+        await state.refresh()
+        let names = state.sections.flatMap(\.commands).map(\.displayName)
+        #expect(names.contains("Vite Dev"))
+        #expect(!names.contains("Vite"))
     }
 
     @Test func testEditCommandOfAStoppedCommandMakesNoTmuxChange() async throws -> Void {
