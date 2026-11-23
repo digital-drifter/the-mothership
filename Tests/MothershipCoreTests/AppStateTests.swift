@@ -332,6 +332,33 @@ private func makeState(
         #expect(await fake.calls.contains(["set-option", "-t", "=ms-es-term-aaaaaa:", "@ms_name", "Lo gs  now"]))
     }
 
+    @Test func testRefreshKillsOnlyDeadCommandsMissingFromConfig() async throws -> Void {
+        var otherProject = pane("ms-gone-cmd-web", dead: true, kind: .command, name: "Web")
+        otherProject.project = "gone"
+        let fake = FakeTmux(panes: [
+            pane("ms-es-cmd-old", dead: true, kind: .command, name: "Old"),
+            otherProject,
+            pane("ms-es-cmd-live", kind: .command, name: "Live"),
+            pane("ms-es-cmd-vite", dead: true, kind: .command, name: "Vite"),
+            pane("ms-es-agent-aaaaaa", dead: true, kind: .agent, name: "Claude 1", template: "Claude"),
+        ])
+        let (state, _) = try makeState(tmux: fake)
+        await state.refresh()
+        let kills = await fake.calls.filter { $0.first == "kill-session" }
+        #expect(kills == [["kill-session", "-t", "=ms-es-cmd-old:"], ["kill-session", "-t", "=ms-gone-cmd-web:"]])
+        let commands = state.sections.flatMap(\.commands).map(\.id)
+        #expect(!commands.contains("ms-es-cmd-old"))
+        #expect(state.actionError == nil)
+    }
+
+    @Test func testRefreshKillsNothingBeforeAConfigHasLoaded() async throws -> Void {
+        let fake = FakeTmux(panes: [pane("ms-es-cmd-vite", dead: true, kind: .command, name: "Vite")])
+        let (state, _) = try makeState(yaml: nil, tmux: fake)
+        #expect(state.configError != nil)
+        await state.refresh()
+        #expect(!(await fake.calls.contains { $0.first == "kill-session" }))
+    }
+
     @Test func testStopAllKillsServerAndRefreshes() async throws -> Void {
         let fake = FakeTmux()
         let (state, _) = try makeState(tmux: fake)

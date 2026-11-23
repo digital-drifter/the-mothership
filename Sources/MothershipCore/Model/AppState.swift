@@ -21,6 +21,8 @@ public final class AppState {
     @ObservationIgnored private let directoryExists: (String) -> Bool
     @ObservationIgnored private var panes: [PaneInfo] = []
     @ObservationIgnored private var respawns = RespawnTracker()
+    /// False until a config has parsed; until then every command would look like an orphan.
+    @ObservationIgnored private var hasLoadedConfig = false
     /// Names handed out by in-flight creates, so concurrent creates never pick the same number.
     @ObservationIgnored private var pendingNames: [String: Set<String>] = [:]
 
@@ -54,6 +56,7 @@ public final class AppState {
         }
         do {
             config = try ConfigLoader.parse(text, homeDirectory: homeDirectory)
+            hasLoadedConfig = true
             configError = nil
             rebuildSections()
         } catch {
@@ -63,7 +66,7 @@ public final class AppState {
 
     public func refresh() async -> Void {
         do {
-            panes = try await tmux.listPanes()
+            panes = await removingDeadOrphanCommands(try await tmux.listPanes())
             rebuildSections()
             let respawned = respawns.update(panes)
             if !respawned.isEmpty { onRespawn?(respawned) }
@@ -238,6 +241,27 @@ public final class AppState {
             report(error)
         }
         await refresh()
+    }
+
+    /// Kills command sessions that are dead and no longer in the config. The sidebar hides them anyway;
+    /// left alone they would pile up, and re-adding the command would show their old output.
+    /// A failed kill is reported and the pane kept, so the refresh itself still goes through.
+    private func removingDeadOrphanCommands(_ panes: [PaneInfo]) async -> [PaneInfo] {
+        guard hasLoadedConfig else { return panes }
+        var kept: [PaneInfo] = []
+        for pane in panes {
+            guard pane.kind == .command, pane.isDead, configuredCommand(pane.sessionName) == nil else {
+                kept.append(pane)
+                continue
+            }
+            do {
+                try await tmux.killSession(pane.sessionName)
+            } catch {
+                report(error)
+                kept.append(pane)
+            }
+        }
+        return kept
     }
 
     /// The config entry of a command session; nil for agents, terminals and orphan commands.
