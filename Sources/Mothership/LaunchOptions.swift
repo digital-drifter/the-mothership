@@ -2,20 +2,20 @@ import Foundation
 import MothershipCore
 
 /// Launch-time settings. Each can be overridden through UserDefaults, which includes launch
-/// arguments, e.g. `open build/Mothership.app --args -configPath /tmp/x.yml -tmuxSocket ms-dev`.
+/// arguments, e.g. `open build/Mothership.app --args -dataPath /tmp/projects.json -tmuxSocket ms-dev`.
 struct LaunchOptions {
-    /// The projects.yml file (`configPath` override).
-    var configURL: URL
+    /// The projects.json file (`dataPath` override).
+    var dataURL: URL
     /// The private tmux server's socket name (`tmuxSocket` override).
     var socketName: String
     /// Pretend tmux is not installed (`forceTmuxMissing`), to test the missing-tmux screen.
     var forceTmuxMissing: Bool
 
     static func current(_ defaults: UserDefaults = .standard) -> LaunchOptions {
-        let configURL = nonEmpty(defaults.string(forKey: "configPath"))
+        let dataURL = nonEmpty(defaults.string(forKey: "dataPath"))
             .map { URL(fileURLWithPath: NSString(string: $0).expandingTildeInPath) }
         return LaunchOptions(
-            configURL: configURL ?? ConfigLoader.defaultURL,
+            dataURL: dataURL ?? ProjectStore.defaultURL,
             socketName: nonEmpty(defaults.string(forKey: "tmuxSocket")) ?? "mothership",
             forceTmuxMissing: defaults.bool(forKey: "forceTmuxMissing"))
     }

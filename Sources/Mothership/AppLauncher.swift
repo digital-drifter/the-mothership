@@ -3,7 +3,7 @@ import MothershipCore
 import Observation
 
 /// Runs the launch sequence once and owns what lives for the whole app run:
-/// the `AppState`, the config watcher and the 1 s refresh loop.
+/// the `AppState` and the 1 s refresh loop.
 @MainActor @Observable
 final class AppLauncher {
     enum Phase {
@@ -18,7 +18,6 @@ final class AppLauncher {
     private(set) var tmux: TmuxEnvironment?
 
     @ObservationIgnored private var started = false
-    @ObservationIgnored private var watcher: ConfigWatcher?
     @ObservationIgnored private var refreshLoop: Task<Void, Never>?
 
     init(options: LaunchOptions = .current()) {
@@ -46,38 +45,23 @@ final class AppLauncher {
         } catch {
             setupError = "Could not write \(tmuxConfURL.path): \(error.localizedDescription)"
         }
-        do {
-            try ConfigLoader.ensureExists(at: options.configURL)
-        } catch {
-            setupError = "Could not create \(options.configURL.path): \(error.localizedDescription)"
-        }
 
         let tmux = TmuxEnvironment(tmuxPath: tmuxPath, tmuxConfPath: tmuxConfURL.path, socketName: options.socketName)
         let state = AppState(
-            tmux: tmux.makeClient(), configURL: options.configURL,
-            shell: environment["SHELL"] ?? "/bin/zsh", homeDirectory: NSHomeDirectory())
+            tmux: tmux.makeClient(), store: ProjectStore(url: options.dataURL),
+            shell: environment["SHELL"] ?? "/bin/zsh")
         let terminals = TerminalSessionCache(tmux: tmux)
         state.onRespawn = { [weak terminals] names in terminals?.reseed(names) }
         self.tmux = tmux
         phase = .ready(state, terminals)
 
-        state.reloadConfig()
+        state.load()
         await state.refresh()
         Self.prune(terminals, to: state)
         await state.runAutostart()
         if let setupError { state.actionError = setupError }
 
-        startWatchingConfig(state)
         startRefreshLoop(state, terminals)
-    }
-
-    private func startWatchingConfig(_ state: AppState) -> Void {
-        // onChange runs on the watcher's private queue: hop to the main actor for AppState.
-        let watcher = ConfigWatcher(url: options.configURL) {
-            Task { @MainActor in state.reloadConfig() }
-        }
-        watcher.start()
-        self.watcher = watcher
     }
 
     /// Refreshes every second; each refresh finishes before the next sleep, so they never overlap.

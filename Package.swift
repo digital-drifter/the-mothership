@@ -10,10 +10,9 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/migueldeicaza/SwiftTerm", from: "1.99.3"),
-        .package(url: "https://github.com/jpsim/Yams", from: "6.2.2"),
     ],
     targets: [
-        .target(name: "MothershipCore", dependencies: [.product(name: "Yams", package: "Yams")]),
+        .target(name: "MothershipCore"),
         .executableTarget(name: "Mothership", dependencies: [
             "MothershipCore",
             .product(name: "SwiftTerm", package: "SwiftTerm"),

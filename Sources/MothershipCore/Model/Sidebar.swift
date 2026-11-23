@@ -27,20 +27,18 @@ public struct ProjectSection: Identifiable, Equatable, Sendable {
     public var name: String
     public var path: String?
     public var isOrphan: Bool
-    public var agentTemplates: [AgentTemplate]
     public var agents: [SidebarItem]
     public var commands: [SidebarItem]
     public var terminals: [SidebarItem]
 
     public init(
-        id: String, name: String, path: String?, isOrphan: Bool, agentTemplates: [AgentTemplate],
+        id: String, name: String, path: String?, isOrphan: Bool,
         agents: [SidebarItem], commands: [SidebarItem], terminals: [SidebarItem]
     ) {
         self.id = id
         self.name = name
         self.path = path
         self.isOrphan = isOrphan
-        self.agentTemplates = agentTemplates
         self.agents = agents
         self.commands = commands
         self.terminals = terminals
@@ -54,7 +52,7 @@ public enum SidebarBuilder {
             let projectPanes = known.filter { $0.project == project.slug }
             return section(
                 id: project.slug, name: project.name, path: project.path, isOrphan: false,
-                templates: project.agents, configCommands: project.commands, panes: projectPanes)
+                configCommands: project.commands, panes: projectPanes)
         }
 
         let configSlugs = Set(config.projects.map(\.slug))
@@ -64,7 +62,7 @@ public enum SidebarBuilder {
         }
         for slug in orphanSlugs {
             let orphan = section(
-                id: slug, name: slug, path: nil, isOrphan: true, templates: [], configCommands: [],
+                id: slug, name: slug, path: nil, isOrphan: true, configCommands: [],
                 panes: known.filter { $0.project == slug })
             if !(orphan.agents.isEmpty && orphan.commands.isEmpty && orphan.terminals.isEmpty) {
                 sections.append(orphan)
@@ -74,7 +72,7 @@ public enum SidebarBuilder {
     }
 
     private static func section(
-        id: String, name: String, path: String?, isOrphan: Bool, templates: [AgentTemplate],
+        id: String, name: String, path: String?, isOrphan: Bool,
         configCommands: [CommandConfig], panes: [PaneInfo]
     ) -> ProjectSection {
         var commands: [SidebarItem] = configCommands.map { command in
@@ -90,7 +88,7 @@ public enum SidebarBuilder {
             .map { item(from: $0, orphan: true) }
 
         return ProjectSection(
-            id: id, name: name, path: path, isOrphan: isOrphan, agentTemplates: templates,
+            id: id, name: name, path: path, isOrphan: isOrphan,
             agents: items(of: .agent, in: panes), commands: commands, terminals: items(of: .terminal, in: panes))
     }
 

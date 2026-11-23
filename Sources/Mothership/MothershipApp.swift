@@ -34,7 +34,7 @@ private struct RootView: View {
             case .tmuxMissing:
                 TmuxMissingView { Task { await launcher.launch() } }
             case .ready(let state, let terminals):
-                MainView(state: state, terminals: terminals, navigation: navigation, configURL: launcher.options.configURL)
+                MainView(state: state, terminals: terminals, navigation: navigation)
             }
         }
         .task { await launcher.launch() }
@@ -45,7 +45,6 @@ private struct MainView: View {
     let state: AppState
     let terminals: TerminalSessionCache
     let navigation: SidebarNavigation
-    let configURL: URL
 
     var body: some View {
         NavigationSplitView {
@@ -56,13 +55,8 @@ private struct MainView: View {
                 // Overlays, so a banner coming or going never resizes the terminal (SIGWINCH, and a
                 // reconnect must seed the view at the size tmux captured).
                 .overlay(alignment: .top) {
-                    VStack(spacing: 0) {
-                        if let configError = state.configError {
-                            ConfigErrorBanner(message: configError, configURL: configURL)
-                        }
-                        if let actionError = state.actionError {
-                            ActionErrorBanner(message: actionError) { state.actionError = nil }
-                        }
+                    if let actionError = state.actionError {
+                        ActionErrorBanner(message: actionError) { state.actionError = nil }
                     }
                 }
         }

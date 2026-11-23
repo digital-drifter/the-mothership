@@ -2,20 +2,17 @@ import Foundation
 import Testing
 @testable import MothershipCore
 
-private let validYAML = """
-projects:
-  - name: ES
-    path: ~/Code/es
-    commands:
-      - name: Vite
-        run: npm run dev
-        autostart: true
-      - name: Queue
-        run: php artisan queue:work
-    agents:
-      - name: Claude
-        run: claude
-"""
+private let validConfig = MothershipConfig(
+    version: 1,
+    agents: [AgentTemplate(name: "Claude", run: "claude")],
+    projects: [
+        ProjectConfig(
+            slug: "es", name: "ES", path: "/Users/test/Code/es",
+            commands: [
+                CommandConfig(slug: "vite", name: "Vite", run: "npm run dev", autostart: true),
+                CommandConfig(slug: "queue", name: "Queue", run: "php artisan queue:work", autostart: false),
+            ])
+    ])
 
 private final class Signals: @unchecked Sendable {
     private let lock = NSLock()
@@ -32,45 +29,31 @@ private func pane(
         deadStatus: dead ? 1 : nil, project: "es", kind: kind, name: name, template: template)
 }
 
+/// A state backed by a temp store holding `config`; loaded unless `load` is false.
 @MainActor
 private func makeState(
-    yaml: String? = validYAML, tmux: FakeTmux, signals: Signals = Signals(), folderOK: Bool = true
-) throws -> (AppState, URL) {
-    let url = FileManager.default.temporaryDirectory.appendingPathComponent("ms-\(UUID().uuidString).yml")
-    if let yaml { try yaml.write(to: url, atomically: true, encoding: .utf8) }
+    config: MothershipConfig = validConfig, load: Bool = true, tmux: FakeTmux, signals: Signals = Signals(),
+    folderOK: Bool = true
+) throws -> (AppState, ProjectStore) {
+    let store = ProjectStore(url: FileManager.default.temporaryDirectory
+        .appendingPathComponent("ms-\(UUID().uuidString)/projects.json"))
+    try store.save(config)
     let state = AppState(
-        tmux: tmux, configURL: url, shell: "/bin/zsh", homeDirectory: "/Users/test",
+        tmux: tmux, store: store, shell: "/bin/zsh",
         stopGracePeriod: .milliseconds(10), signalProcessGroup: { signals.add($0) },
         directoryExists: { _ in folderOK })
-    state.reloadConfig()
-    return (state, url)
+    if load { state.load() }
+    return (state, store)
 }
 
 @Suite @MainActor struct AppStateTests {
-    @Test func testReloadKeepsLastGoodConfigOnParseError() throws -> Void {
-        let (state, url) = try makeState(tmux: FakeTmux())
-        let before = state.sections
-        #expect(before.count == 1)
-        try "projects: [: nope".write(to: url, atomically: true, encoding: .utf8)
-        state.reloadConfig()
-        #expect(state.configError != nil)
-        #expect(state.sections == before)
-        try validYAML.write(to: url, atomically: true, encoding: .utf8)
-        state.reloadConfig()
-        #expect(state.configError == nil)
-    }
-
-    @Test func testReloadExposesParsedConfigForDisplay() throws -> Void {
-        let (state, _) = try makeState(tmux: FakeTmux())
-        #expect(state.config.projects.first?.commands.map(\.run) == ["npm run dev", "php artisan queue:work"])
-    }
-
-    @Test func testReloadWithDeletedFileSetsError() throws -> Void {
-        let (state, url) = try makeState(tmux: FakeTmux())
-        try FileManager.default.removeItem(at: url)
-        state.reloadConfig()
-        #expect(state.configError == "Config file not found: \(url.path)")
-        #expect(state.sections.count == 1)
+    @Test func testLoadOfAnUnreadableFileShowsTheWarningAndNoProjects() throws -> Void {
+        let (state, store) = try makeState(load: false, tmux: FakeTmux())
+        try Data("not json".utf8).write(to: store.url)
+        state.load()
+        #expect(state.actionError?.contains("projects.json.unreadable-") == true)
+        #expect(state.config == .empty)
+        #expect(state.sections.isEmpty)
     }
 
     @Test func testStartNewCommandCallsNewSessionWithShellArgv() async throws -> Void {
@@ -243,13 +226,13 @@ private func makeState(
 
     @Test func testStartAndRestartUseTheEditedRunAndPath() async throws -> Void {
         let fake = FakeTmux(panes: [pane("ms-es-cmd-vite", dead: true, kind: .command, name: "Vite")])
-        let (state, url) = try makeState(tmux: fake)
+        let (state, store) = try makeState(tmux: fake)
         await state.refresh()
-        try validYAML
-            .replacingOccurrences(of: "npm run dev", with: "pnpm dev --port 5174")
-            .replacingOccurrences(of: "~/Code/es", with: "~/Code/es-next")
-            .write(to: url, atomically: true, encoding: .utf8)
-        state.reloadConfig()
+        var edited = validConfig
+        edited.projects[0].path = "/Users/test/Code/es-next"
+        edited.projects[0].commands[0].run = "pnpm dev --port 5174"
+        try store.save(edited)
+        state.load()
         await state.start(commandSlug: "vite", projectSlug: "es")
         await state.restart(sessionName: "ms-es-cmd-vite")
         let respawns = await fake.calls.filter { $0.first == "respawn-pane" }
@@ -353,8 +336,7 @@ private func makeState(
 
     @Test func testRefreshKillsNothingBeforeAConfigHasLoaded() async throws -> Void {
         let fake = FakeTmux(panes: [pane("ms-es-cmd-vite", dead: true, kind: .command, name: "Vite")])
-        let (state, _) = try makeState(yaml: nil, tmux: fake)
-        #expect(state.configError != nil)
+        let (state, _) = try makeState(load: false, tmux: fake)
         await state.refresh()
         #expect(!(await fake.calls.contains { $0.first == "kill-session" }))
     }

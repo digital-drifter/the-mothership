@@ -43,7 +43,7 @@ struct SidebarView: View {
     private func rows(for section: ProjectSection) -> some View {
         if !section.isOrphan || !section.agents.isEmpty {
             GroupHeader(title: "Agents") {
-                if !section.agentTemplates.isEmpty { newAgentMenu(section) }
+                if !section.isOrphan && !state.agents.isEmpty { newAgentMenu(section) }
             }
             ForEach(section.agents) { item in
                 row(item, in: section).contextMenu { sessionMenu(item) }
@@ -78,7 +78,7 @@ struct SidebarView: View {
 
     private func newAgentMenu(_ section: ProjectSection) -> some View {
         Menu {
-            ForEach(section.agentTemplates, id: \.name) { template in
+            ForEach(state.agents, id: \.name) { template in
                 Button(template.name) {
                     Task {
                         if let id = await state.newAgent(projectSlug: section.id, templateName: template.name) {

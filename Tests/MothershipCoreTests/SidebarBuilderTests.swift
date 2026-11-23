@@ -11,16 +11,14 @@ private func pane(
         deadStatus: status, project: project, kind: kind, name: name, template: "")
 }
 
-private let vite = CommandConfig(name: "Vite", slug: "vite", run: "npm run dev", autostart: true)
-private let queue = CommandConfig(name: "Queue", slug: "queue", run: "php artisan queue:work", autostart: false)
-private let horizon = CommandConfig(name: "Horizon", slug: "horizon", run: "php artisan horizon", autostart: true)
+private let vite = CommandConfig(slug: "vite", name: "Vite", run: "npm run dev", autostart: true)
+private let queue = CommandConfig(slug: "queue", name: "Queue", run: "php artisan queue:work", autostart: false)
+private let horizon = CommandConfig(slug: "horizon", name: "Horizon", run: "php artisan horizon", autostart: true)
 
 private func config(_ commands: [CommandConfig]) -> MothershipConfig {
-    MothershipConfig(projects: [
-        ProjectConfig(
-            name: "App", slug: "app", path: "/tmp/app", commands: commands,
-            agents: [AgentTemplate(name: "Claude", run: "claude")])
-    ])
+    MothershipConfig(
+        version: 1, agents: MothershipConfig.defaultAgents,
+        projects: [ProjectConfig(slug: "app", name: "App", path: "/tmp/app", commands: commands)])
 }
 
 struct SidebarBuilderTests {
@@ -32,7 +30,6 @@ struct SidebarBuilderTests {
         let sections = SidebarBuilder.build(config: config([vite, queue, horizon]), panes: panes)
         #expect(sections.count == 1)
         #expect(sections[0].path == "/tmp/app")
-        #expect(sections[0].agentTemplates.count == 1)
         #expect(sections[0].commands.map(\.displayName) == ["Vite", "Queue", "Horizon"])
         #expect(sections[0].commands.map(\.status) == [.running, .notStarted, .exited(code: 1)])
         #expect(sections[0].commands[1].id == "ms-app-cmd-queue")
@@ -79,7 +76,6 @@ struct SidebarBuilderTests {
         #expect(orphan.name == "gone")
         #expect(orphan.path == nil)
         #expect(orphan.isOrphan)
-        #expect(orphan.agentTemplates.isEmpty)
         #expect(orphan.terminals.count == 1)
         #expect(orphan.commands.map(\.id) == ["ms-gone-cmd-x"])
     }
@@ -103,7 +99,7 @@ struct SidebarBuilderTests {
     }
 
     @Test func testAutostartSkipsRunningSessionsButStartsDeadOnes() -> Void {
-        let auto3 = CommandConfig(name: "Mail", slug: "mail", run: "mailpit", autostart: true)
+        let auto3 = CommandConfig(slug: "mail", name: "Mail", run: "mailpit", autostart: true)
         let panes = [
             pane("ms-app-cmd-vite", kind: .command),
             pane("ms-app-cmd-horizon", kind: .command, dead: true, status: 1),

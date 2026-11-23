@@ -4,25 +4,25 @@ import Observation
 @MainActor @Observable
 public final class AppState {
     public private(set) var sections: [ProjectSection] = []
-    public private(set) var configError: String?
-    /// The last config that parsed; kept when a later edit breaks the file.
-    public private(set) var config = MothershipConfig(projects: [])
+    /// The stored projects and agent templates, as last loaded.
+    public private(set) var config = MothershipConfig.empty
     public var actionError: String?
     /// Called after a refresh with the sessions whose pane process was replaced since the last one.
     /// respawn-pane resets a pane without emitting output, so a view showing it must be re-seeded.
     @ObservationIgnored public var onRespawn: ((Set<String>) -> Void)?
 
     @ObservationIgnored private let tmux: TmuxCommanding
-    @ObservationIgnored private let configURL: URL
+    @ObservationIgnored private let store: ProjectStore
     @ObservationIgnored private let shell: String
-    @ObservationIgnored private let homeDirectory: String
     @ObservationIgnored private let stopGracePeriod: Duration
     @ObservationIgnored private let signalProcessGroup: (Int32) -> Void
     @ObservationIgnored private let directoryExists: (String) -> Bool
     @ObservationIgnored private var panes: [PaneInfo] = []
     @ObservationIgnored private var respawns = RespawnTracker()
-    /// False until a config has parsed; until then every command would look like an orphan.
+    /// False until the store has been loaded; until then every command would look like an orphan.
     @ObservationIgnored private var hasLoadedConfig = false
+    /// False when an unreadable file could not be moved aside; saving would overwrite it.
+    @ObservationIgnored private var canSave = true
     /// Refreshes overlap (the 1 s loop and actions); a list older than the one shown is discarded.
     @ObservationIgnored private var startedRefreshes = 0
     @ObservationIgnored private var appliedRefresh = 0
@@ -32,7 +32,7 @@ public final class AppState {
     @ObservationIgnored private var pendingNames: [String: Set<String>] = [:]
 
     public init(
-        tmux: TmuxCommanding, configURL: URL, shell: String, homeDirectory: String,
+        tmux: TmuxCommanding, store: ProjectStore, shell: String,
         stopGracePeriod: Duration = .seconds(5),
         signalProcessGroup: @escaping (Int32) -> Void = { _ = kill(-$0, SIGTERM) },
         directoryExists: @escaping (String) -> Bool = { path in
@@ -41,9 +41,8 @@ public final class AppState {
         }
     ) {
         self.tmux = tmux
-        self.configURL = configURL
+        self.store = store
         self.shell = shell
-        self.homeDirectory = homeDirectory
         self.stopGracePeriod = stopGracePeriod
         self.signalProcessGroup = signalProcessGroup
         self.directoryExists = directoryExists
@@ -51,22 +50,17 @@ public final class AppState {
 
     // MARK: - Config and polling
 
-    public func reloadConfig() -> Void {
-        let text: String
-        do {
-            text = try String(contentsOf: configURL, encoding: .utf8)
-        } catch {
-            configError = "Config file not found: \(configURL.path)"
-            return
-        }
-        do {
-            config = try ConfigLoader.parse(text, homeDirectory: homeDirectory)
-            hasLoadedConfig = true
-            configError = nil
-            rebuildSections()
-        } catch {
-            configError = String(describing: error)
-        }
+    /// The agent templates offered in every project's New Agent menu.
+    public var agents: [AgentTemplate] { config.agents }
+
+    /// Reads the store. An unreadable file shows its warning as the action error.
+    public func load() -> Void {
+        let loaded = store.load()
+        config = loaded.config
+        hasLoadedConfig = true
+        canSave = loaded.canSave
+        if let warning = loaded.warning { actionError = warning }
+        rebuildSections()
     }
 
     public func refresh() async -> Void {
@@ -176,9 +170,7 @@ public final class AppState {
 
     @discardableResult
     public func newAgent(projectSlug: String, templateName: String) async -> String? {
-        guard let template = config.projects.first(where: { $0.slug == projectSlug })?
-            .agents.first(where: { $0.name == templateName })
-        else {
+        guard let template = config.agents.first(where: { $0.name == templateName }) else {
             actionError = "Unknown agent template: \(templateName)"
             return nil
         }

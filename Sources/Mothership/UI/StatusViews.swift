@@ -35,21 +35,6 @@ struct TmuxMissingView: View {
     }
 }
 
-/// Shown while the config file fails to parse; the sidebar keeps the last good config.
-struct ConfigErrorBanner: View {
-    let message: String
-    let configURL: URL
-
-    var body: some View {
-        Banner(systemImage: "exclamationmark.triangle.fill", tint: .yellow) {
-            Text("Config error in \(configURL.path)").bold()
-            Text(message).font(.callout).textSelection(.enabled)
-        } trailing: {
-            Button("Open Config") { NSWorkspace.shared.open(configURL) }
-        }
-    }
-}
-
 /// Shows the last failed action until dismissed.
 struct ActionErrorBanner: View {
     let message: String

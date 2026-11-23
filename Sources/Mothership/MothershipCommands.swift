@@ -18,7 +18,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-/// App-wide menu items: Open Config, New Terminal, project shortcuts and Stop All and Quit.
+/// App-wide menu items: New Terminal, project shortcuts and Stop All and Quit.
 struct MothershipCommands: Commands {
     let launcher: AppLauncher
     let navigation: SidebarNavigation
@@ -34,8 +34,6 @@ struct MothershipCommands: Commands {
             Button("New Terminal") { newTerminal() }
                 .keyboardShortcut("t", modifiers: .command)
                 .disabled(terminalTarget == nil)
-            Button("Open Config") { NSWorkspace.shared.open(launcher.options.configURL) }
-                .keyboardShortcut(",", modifiers: .command)
         }
         CommandMenu("Projects") {
             let sections = state?.sections ?? []
