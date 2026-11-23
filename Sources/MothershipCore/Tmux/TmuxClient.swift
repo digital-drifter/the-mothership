@@ -93,7 +93,15 @@ private final class DataBox: @unchecked Sendable {
 
 extension TmuxCommanding {
     private static func isNoServer(_ error: TmuxError) -> Bool {
-        ["no server running", "error connecting", "No such file or directory"].contains { error.message.contains($0) }
+        guard error.exitCode != -1 else { return false }
+        return ["no server running", "error connecting"].contains { error.message.contains($0) }
+    }
+
+    /// tmux treats an argument ending in `;` as a command separator. A backslash before that
+    /// trailing `;` makes tmux keep the `;` and strip exactly one backslash, so always add one.
+    static func escapeTrailingSemicolon(_ arg: String) -> String {
+        guard arg.hasSuffix(";") else { return arg }
+        return "\(arg.dropLast())\\;"
     }
 
     public func listPanes() async throws -> [PaneInfo] {
@@ -106,13 +114,14 @@ extension TmuxCommanding {
     }
 
     public func newSession(name: String, directory: String, command: [String], metadata: SessionMetadata) async throws -> Void {
-        var args = ["new-session", "-d", "-s", name, "-c", directory, "-x", "200", "-y", "50"] + command
+        var args = ["new-session", "-d", "-s", Self.escapeTrailingSemicolon(name), "-c", Self.escapeTrailingSemicolon(directory), "-x", "200", "-y", "50"]
+        args += command.map(Self.escapeTrailingSemicolon)
         let options = [
             ("@ms_project", metadata.project), ("@ms_kind", metadata.kind.rawValue),
             ("@ms_name", metadata.name), ("@ms_template", metadata.template),
         ]
         for (key, value) in options {
-            args += [";", "set-option", "-t", name, key, value]
+            args += [";", "set-option", "-t", Self.escapeTrailingSemicolon(name), key, Self.escapeTrailingSemicolon(value)]
         }
         _ = try await run(args)
     }
@@ -126,7 +135,7 @@ extension TmuxCommanding {
     }
 
     public func setName(session: String, name: String) async throws -> Void {
-        _ = try await run(["set-option", "-t", session, "@ms_name", name])
+        _ = try await run(["set-option", "-t", Self.escapeTrailingSemicolon(session), "@ms_name", Self.escapeTrailingSemicolon(name)])
     }
 
     public func killSession(_ name: String) async throws -> Void {

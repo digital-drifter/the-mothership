@@ -151,4 +151,57 @@ struct TmuxIntegrationTests {
         try await fixture.client.killServer()
         #expect(try await fixture.client.listPanes().isEmpty)
     }
+
+    @Test func testArgumentEndingInSemicolonIsPassedVerbatim() async throws -> Void {
+        let fixture = try Fixture()
+        defer { fixture.cleanup() }
+        let out = fixture.directory.appendingPathComponent("find.txt").path
+        try await fixture.client.newSession(
+            name: "ms-proj-cmd-semi", directory: "/tmp",
+            command: ["/bin/sh", "-c", "echo \"$0\" > \(out)", "tail;"], metadata: fixture.metadata())
+        let deadline = Date().addingTimeInterval(3)
+        var text = ""
+        while Date() < deadline, !text.contains("tail;") {
+            text = (try? String(contentsOfFile: out, encoding: .utf8)) ?? ""
+            if !text.contains("tail;") { try await Task.sleep(for: .milliseconds(50)) }
+        }
+        #expect(text == "tail;\n")
+    }
+
+    @Test func testFindExecStyleCommandEndingInBackslashSemicolonSucceeds() async throws -> Void {
+        let fixture = try Fixture()
+        defer { fixture.cleanup() }
+        let out = fixture.directory.appendingPathComponent("find.txt").path
+        // The shell script's final token is `\;`, as in `find ... -exec echo hit {} \;`.
+        try await fixture.client.newSession(
+            name: "ms-proj-cmd-find", directory: "/tmp",
+            command: ["/bin/sh", "-c", "find /bin -maxdepth 1 -name sh -exec echo hit {} \\; > \(out)"],
+            metadata: fixture.metadata())
+        let pane = try await fixture.waitForPane("ms-proj-cmd-find") { $0.isDead }
+        #expect(pane?.deadStatus == 0)
+        #expect((try? String(contentsOfFile: out, encoding: .utf8)) == "hit /bin/sh\n")
+    }
+
+    @Test func testMetadataNameEndingInSemicolonRoundTrips() async throws -> Void {
+        let fixture = try Fixture()
+        defer { fixture.cleanup() }
+        for (index, name) in ["Foo;", "Foo\\;", "Foo\\\\;", "Foo"].enumerated() {
+            let session = "ms-proj-cmd-n\(index)"
+            var meta = fixture.metadata()
+            meta.name = name
+            try await fixture.client.newSession(
+                name: session, directory: "/tmp", command: ["/bin/sh", "-c", "sleep 30"], metadata: meta)
+            let pane = try await fixture.waitForPane(session) { _ in true }
+            #expect(pane?.name == name)
+            try await fixture.client.setName(session: session, name: name + ";")
+            let renamed = try await fixture.waitForPane(session) { $0.name == name + ";" }
+            #expect(renamed != nil)
+        }
+    }
+
+    @Test func testListPanesThrowsWhenTmuxBinaryMissing() async throws -> Void {
+        let client = TmuxClient(tmuxPath: "/nonexistent/tmux", configPath: "/tmp/none.conf", socketName: "ms-test-x")
+        await #expect(throws: TmuxError.self) { try await client.listPanes() }
+        await #expect(throws: TmuxError.self) { try await client.killServer() }
+    }
 }
