@@ -192,7 +192,9 @@ struct SidebarView: View {
         let owned = Set((section.agents + section.commands + section.terminals).map(\.id))
         Task {
             await state.removeProject(slug: section.id)
-            if let selection = navigation.selection, owned.contains(selection) { navigation.selection = nil }
+            // A failed save leaves the project in place (and sets actionError); keep the selection then.
+            let gone = !state.sections.contains { $0.id == section.id && !$0.isOrphan }
+            if gone, let selection = navigation.selection, owned.contains(selection) { navigation.selection = nil }
         }
     }
 
