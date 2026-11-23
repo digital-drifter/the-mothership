@@ -6,6 +6,7 @@ struct DetailView: View {
     let item: SidebarItem?
     let section: ProjectSection?
     let state: AppState
+    let navigation: SidebarNavigation
     let terminals: TerminalSessionCache
 
     var body: some View {
@@ -14,7 +15,17 @@ struct DetailView: View {
                 .navigationTitle(item.displayName)
                 .navigationSubtitle(section.name)
         } else {
-            ContentUnavailableView("Select an item", systemImage: "sidebar.left")
+            if state.sections.isEmpty {
+                ContentUnavailableView {
+                    Label("No projects yet", systemImage: "folder.badge.plus")
+                } description: {
+                    Text("Add a project folder to start agents, commands and terminals in it.")
+                } actions: {
+                    Button("Add Project…") { addProjectInteractively(state: state, navigation: navigation) }
+                }
+            } else {
+                ContentUnavailableView("Select an item", systemImage: "sidebar.left")
+            }
         }
     }
 

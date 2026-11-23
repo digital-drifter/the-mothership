@@ -31,6 +31,9 @@ struct MothershipCommands: Commands {
     var body: some Commands {
         CommandGroup(replacing: .appSettings) {}
         CommandGroup(after: .newItem) {
+            Button("Add Project…") { addProject() }
+                .keyboardShortcut("o", modifiers: .command)
+                .disabled(state == nil)
             Button("New Terminal") { newTerminal() }
                 .keyboardShortcut("t", modifiers: .command)
                 .disabled(terminalTarget == nil)
@@ -51,6 +54,11 @@ struct MothershipCommands: Commands {
 
     private var terminalTarget: ProjectSection? {
         state.flatMap { navigation.terminalTarget(in: $0.sections) }
+    }
+
+    private func addProject() -> Void {
+        guard let state else { return }
+        addProjectInteractively(state: state, navigation: navigation)
     }
 
     private func newTerminal() -> Void {

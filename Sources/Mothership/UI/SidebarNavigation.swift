@@ -37,6 +37,16 @@ final class SidebarNavigation {
         }
     }
 
+    /// Expands a project and drops a selection that belongs to another project's items. Section headers are
+    /// not list rows, so a project cannot be selected itself; revealing it is the closest thing.
+    func reveal(projectSlug: String, in sections: [ProjectSection]) -> Void {
+        setExpanded(true, for: projectSlug)
+        let owner = sections.first { section in
+            (section.agents + section.commands + section.terminals).contains { $0.id == selection }
+        }
+        if let owner, owner.id != projectSlug { selection = nil }
+    }
+
     /// The project new terminals go to: the selected item's project, else the first config project.
     func terminalTarget(in sections: [ProjectSection]) -> ProjectSection? {
         let selected = sections.first { section in

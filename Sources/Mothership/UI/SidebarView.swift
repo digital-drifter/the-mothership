@@ -9,6 +9,9 @@ struct SidebarView: View {
     @State private var renaming: SidebarItem?
     @State private var renameDraft = ""
     @State private var ending: Ending?
+    @State private var renamingProject: ProjectSection?
+    @State private var projectRenameDraft = ""
+    @State private var removing: ProjectSection?
 
     var body: some View {
         List(selection: $navigation.selection) {
@@ -17,10 +20,38 @@ struct SidebarView: View {
                     rows(for: section)
                 } header: {
                     Text(section.name).opacity(section.isOrphan ? 0.5 : 1)
+                        .contextMenu { if !section.isOrphan { projectMenu(section) } }
                 }
             }
         }
         .listStyle(.sidebar)
+        .safeAreaInset(edge: .bottom) {
+            HStack {
+                Button {
+                    addProjectInteractively(state: state, navigation: navigation)
+                } label: {
+                    Label("Add Project", systemImage: "plus")
+                }
+                .buttonStyle(.borderless)
+                Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+        }
+        .alert("Rename Project", isPresented: isPresented($renamingProject), presenting: renamingProject) { section in
+            TextField("Name", text: $projectRenameDraft)
+            Button("Rename") { state.renameProject(slug: section.id, to: projectRenameDraft) }
+            Button("Cancel", role: .cancel) {}
+        }
+        .confirmationDialog(
+            "Remove \u{201C}\(removing?.name ?? "")\u{201D}?", isPresented: isPresented($removing),
+            presenting: removing
+        ) { section in
+            Button("Remove", role: .destructive) { remove(section) }
+            Button("Cancel", role: .cancel) {}
+        } message: { section in
+            Text(removalMessage(for: section))
+        }
         .alert("Rename", isPresented: isPresented($renaming), presenting: renaming) { item in
             TextField("Name", text: $renameDraft)
             Button("Rename") { rename(item) }
@@ -134,7 +165,36 @@ struct SidebarView: View {
         Button("Close") { confirmIfRunning(Ending(item: item, action: .close)) }
     }
 
+    @ViewBuilder
+    private func projectMenu(_ section: ProjectSection) -> some View {
+        Button("Rename…") {
+            projectRenameDraft = section.name
+            renamingProject = section
+        }
+        Button("Change Folder…") {
+            if let path = FolderPicker.choose(title: "Change Folder", prompt: "Choose", startingAt: section.path) {
+                state.changeFolder(projectSlug: section.id, to: path)
+            }
+        }
+        Button("Remove Project…") { removing = section }
+    }
+
     // MARK: - Actions and helpers
+
+    private func removalMessage(for section: ProjectSection) -> String {
+        let running = state.runningSessionCount(projectSlug: section.id)
+        let note = "The folder on disk is not touched."
+        guard running > 0 else { return note }
+        return "Stops \(running) running session\(running == 1 ? "" : "s"). \(note)"
+    }
+
+    private func remove(_ section: ProjectSection) -> Void {
+        let owned = Set((section.agents + section.commands + section.terminals).map(\.id))
+        Task {
+            await state.removeProject(slug: section.id)
+            if let selection = navigation.selection, owned.contains(selection) { navigation.selection = nil }
+        }
+    }
 
     private func rename(_ item: SidebarItem) -> Void {
         let name = renameDraft.trimmingCharacters(in: .whitespacesAndNewlines)

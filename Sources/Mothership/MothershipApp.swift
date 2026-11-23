@@ -51,7 +51,7 @@ private struct MainView: View {
             SidebarView(state: state, navigation: navigation)
                 .navigationSplitViewColumnWidth(min: 200, ideal: 240)
         } detail: {
-            DetailView(item: selected?.item, section: selected?.section, state: state, terminals: terminals)
+            DetailView(item: selected?.item, section: selected?.section, state: state, navigation: navigation, terminals: terminals)
                 // Overlays, so a banner coming or going never resizes the terminal (SIGWINCH, and a
                 // reconnect must seed the view at the size tmux captured).
                 .overlay(alignment: .top) {
