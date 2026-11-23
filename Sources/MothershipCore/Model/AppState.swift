@@ -157,13 +157,18 @@ public final class AppState {
         return await create(projectSlug: projectSlug, kind: .agent, prefix: template.name, template: template.name, run: template.run)
     }
 
-    public func stopAll() async -> Void {
+    /// Kills the private tmux server. Returns false (and sets `actionError`) when that failed.
+    @discardableResult
+    public func stopAll() async -> Bool {
+        var stopped = true
         do {
             try await tmux.killServer()
         } catch {
             report(error)
+            stopped = false
         }
         await refresh()
+        return stopped
     }
 
     // MARK: - Helpers

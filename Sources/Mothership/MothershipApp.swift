@@ -4,6 +4,7 @@ import SwiftUI
 
 @main
 struct MothershipApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var launcher = AppLauncher()
     @State private var navigation = SidebarNavigation()
 

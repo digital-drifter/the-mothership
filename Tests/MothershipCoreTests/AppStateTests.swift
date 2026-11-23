@@ -259,10 +259,20 @@ private func makeState(
     @Test func testStopAllKillsServerAndRefreshes() async throws {
         let fake = FakeTmux()
         let (state, _) = try makeState(tmux: fake)
-        await state.stopAll()
+        let stopped = await state.stopAll()
+        #expect(stopped)
         let calls = await fake.calls
         #expect(calls.first == ["kill-server"])
         #expect(calls.last?.first == "list-panes")
+    }
+
+    @Test func testStopAllReturnsFalseAndSetsActionErrorWhenKillServerFails() async throws {
+        let fake = FakeTmux()
+        await fake.failAll(with: TmuxError(message: "boom", exitCode: 1))
+        let (state, _) = try makeState(tmux: fake)
+        let stopped = await state.stopAll()
+        #expect(!stopped)
+        #expect(state.actionError == "boom")
     }
 
     @Test func testNewTerminalAndAgentInMissingFolderRunNothing() async throws {

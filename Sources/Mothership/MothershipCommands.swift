@@ -1,6 +1,22 @@
 import AppKit
+import Observation
 import MothershipCore
 import SwiftUI
+
+/// True while Stop All is running, so it cannot be repeated and a plain quit cannot cut it short.
+@MainActor @Observable
+final class StopAllGate {
+    static let shared = StopAllGate()
+    var isStopping = false
+}
+
+/// Holds ⌘Q back while Stop All is in flight; Stop All quits by itself when it finishes.
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    @MainActor
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        StopAllGate.shared.isStopping ? .terminateCancel : .terminateNow
+    }
+}
 
 /// App-wide menu items: Open Config, New Terminal, project shortcuts and Stop All and Quit.
 struct MothershipCommands: Commands {
@@ -31,7 +47,7 @@ struct MothershipCommands: Commands {
         CommandGroup(after: .appTermination) {
             Button("Stop All and Quit") { confirmStopAll() }
                 .keyboardShortcut("q", modifiers: [.command, .option])
-                .disabled(state == nil)
+                .disabled(state == nil || StopAllGate.shared.isStopping)
         }
     }
 
@@ -56,9 +72,12 @@ struct MothershipCommands: Commands {
         alert.addButton(withTitle: "Stop All and Quit")
         alert.addButton(withTitle: "Cancel")
         guard alert.runModal() == .alertFirstButtonReturn else { return }
+        StopAllGate.shared.isStopping = true
         Task {
-            await state.stopAll()
-            NSApp.terminate(nil)
+            let stopped = await state.stopAll()
+            StopAllGate.shared.isStopping = false
+            // On failure stay open: the error banner shows and the sessions are still running.
+            if stopped { NSApp.terminate(nil) }
         }
     }
 }
