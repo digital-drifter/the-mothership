@@ -11,7 +11,7 @@ import SwiftTerm
 @MainActor @Observable
 final class TerminalSession {
     let sessionName: String
-    @ObservationIgnored let view: TerminalView
+    @ObservationIgnored let view: PaneTerminalView
     /// Why the connection was lost; nil while connected or not yet started.
     private(set) var disconnectedMessage: String?
 
@@ -73,7 +73,7 @@ final class TerminalSession {
         }
         if hasConnectedBefore {
             // Drop the old screen and scrollback so the new seed doesn't duplicate them.
-            view.feed(text: "\u{1b}c\u{1b}[?25h")
+            view.feedOutput(text: "\u{1b}c\u{1b}[?25h")
         }
         hasConnectedBefore = true
         self.client = client
@@ -114,7 +114,7 @@ final class TerminalSession {
 
     private func receive(_ bytes: [UInt8], generation: Int) -> Void {
         guard generation == self.generation else { return }
-        view.feed(byteArray: bytes[...])
+        view.feedOutput(bytes[...])
     }
 
     private func disconnect(_ message: String, generation: Int) -> Void {

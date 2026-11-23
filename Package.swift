@@ -19,5 +19,9 @@ let package = Package(
             .product(name: "SwiftTerm", package: "SwiftTerm"),
         ]),
         .testTarget(name: "MothershipCoreTests", dependencies: ["MothershipCore"]),
+        .testTarget(name: "MothershipTests", dependencies: [
+            "Mothership",
+            .product(name: "SwiftTerm", package: "SwiftTerm"),
+        ]),
     ]
 )

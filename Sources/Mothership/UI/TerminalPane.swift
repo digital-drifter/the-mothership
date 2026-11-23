@@ -1,4 +1,5 @@
 import AppKit
+import MothershipCore
 import SwiftTerm
 import SwiftUI
 
@@ -18,6 +19,26 @@ struct TerminalPane: NSViewRepresentable {
 final class PaneTerminalView: TerminalView {
     /// Called whenever the frame changes to a non-empty size.
     var onSized: (() -> Void)?
+
+    private let responseGate = TerminalResponseGate()
+
+    /// Feeds bytes that came from the pane (seed or live output). SwiftTerm parses them synchronously,
+    /// so any reply it generates for a query in them reaches `send(source:data:)` inside this call.
+    func feedOutput(_ bytes: ArraySlice<UInt8>) -> Void {
+        responseGate.whileFeeding { feed(byteArray: bytes) }
+    }
+
+    /// Feeds text from the app itself (e.g. a reset) under the same rule as pane output.
+    func feedOutput(text: String) -> Void {
+        responseGate.whileFeeding { feed(text: text) }
+    }
+
+    /// Replies the emulator generates. tmux already answered every query in the pane's output, so
+    /// replies produced while that output is parsed are dropped; mouse and focus reports pass.
+    nonisolated override func send(source: Terminal, data: ArraySlice<UInt8>) -> Void {
+        guard responseGate.allowsResponses else { return }
+        super.send(source: source, data: data)
+    }
 
     override func setFrameSize(_ newSize: NSSize) -> Void {
         super.setFrameSize(newSize)
