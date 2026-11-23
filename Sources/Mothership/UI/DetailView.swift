@@ -1,12 +1,12 @@
 import MothershipCore
 import SwiftUI
 
-/// The main pane for the selected item. `terminal` is the item's terminal view.
-struct DetailView<Terminal: View>: View {
+/// The main pane for the selected item.
+struct DetailView: View {
     let item: SidebarItem?
     let section: ProjectSection?
     let state: AppState
-    let terminal: Terminal
+    let terminals: TerminalSessionCache
 
     var body: some View {
         if let item, let section {
@@ -25,17 +25,43 @@ struct DetailView<Terminal: View>: View {
             notStarted(item, section)
         case .exited(let code):
             VStack(spacing: 0) {
-                terminalArea
+                terminalArea(item)
                 Divider()
                 exitedBar(item, section, code: code)
             }
         default:
-            terminalArea
+            terminalArea(item)
         }
     }
 
-    private var terminalArea: some View {
-        terminal.frame(maxWidth: .infinity, maxHeight: .infinity)
+    @ViewBuilder
+    private func terminalArea(_ item: SidebarItem) -> some View {
+        let session = terminals.session(for: item.id)
+        TerminalPane(session: session)
+            .id(item.id)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // An overlay, so showing or hiding the bar never resizes the terminal: a reconnect
+            // must seed the view at the size tmux captured.
+            .overlay(alignment: .bottom) {
+                if let message = session.disconnectedMessage {
+                    VStack(spacing: 0) {
+                        Divider()
+                        disconnectedBar(session, message: message)
+                    }
+                }
+            }
+    }
+
+    private func disconnectedBar(_ session: TerminalSession, message: String) -> some View {
+        HStack {
+            Text("Disconnected").bold()
+            Text(message).foregroundStyle(.secondary).textSelection(.enabled)
+            Spacer()
+            Button("Reconnect") { session.activate() }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.bar)
     }
 
     private func notStarted(_ item: SidebarItem, _ section: ProjectSection) -> some View {

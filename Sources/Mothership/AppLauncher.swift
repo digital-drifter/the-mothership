@@ -9,7 +9,7 @@ final class AppLauncher {
     enum Phase {
         case launching
         case tmuxMissing
-        case ready(AppState)
+        case ready(AppState, TerminalSessionCache)
     }
 
     let options: LaunchOptions
@@ -56,16 +56,18 @@ final class AppLauncher {
         let state = AppState(
             tmux: tmux.makeClient(), configURL: options.configURL,
             shell: environment["SHELL"] ?? "/bin/zsh", homeDirectory: NSHomeDirectory())
+        let terminals = TerminalSessionCache(tmux: tmux)
         self.tmux = tmux
-        phase = .ready(state)
+        phase = .ready(state, terminals)
 
         state.reloadConfig()
         await state.refresh()
+        Self.prune(terminals, to: state)
         await state.runAutostart()
         if let setupError { state.actionError = setupError }
 
         startWatchingConfig(state)
-        startRefreshLoop(state)
+        startRefreshLoop(state, terminals)
     }
 
     private func startWatchingConfig(_ state: AppState) -> Void {
@@ -78,12 +80,19 @@ final class AppLauncher {
     }
 
     /// Refreshes every second; each refresh finishes before the next sleep, so they never overlap.
-    private func startRefreshLoop(_ state: AppState) -> Void {
+    private func startRefreshLoop(_ state: AppState, _ terminals: TerminalSessionCache) -> Void {
         refreshLoop = Task {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(1))
                 await state.refresh()
+                Self.prune(terminals, to: state)
             }
         }
+    }
+
+    /// Drops terminal sessions whose items are no longer in the sidebar.
+    private static func prune(_ terminals: TerminalSessionCache, to state: AppState) -> Void {
+        let names = state.sections.flatMap { $0.agents + $0.commands + $0.terminals }.map(\.id)
+        terminals.prune(keeping: Set(names))
     }
 }

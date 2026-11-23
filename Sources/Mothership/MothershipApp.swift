@@ -29,8 +29,8 @@ private struct RootView: View {
                 ProgressView()
             case .tmuxMissing:
                 TmuxMissingView { Task { await launcher.launch() } }
-            case .ready(let state):
-                MainView(state: state, configURL: launcher.options.configURL)
+            case .ready(let state, let terminals):
+                MainView(state: state, terminals: terminals, configURL: launcher.options.configURL)
             }
         }
         .task { await launcher.launch() }
@@ -39,6 +39,7 @@ private struct RootView: View {
 
 private struct MainView: View {
     let state: AppState
+    let terminals: TerminalSessionCache
     let configURL: URL
     @AppStorage("selectedItemID") private var selectedItemID: String?
 
@@ -54,9 +55,7 @@ private struct MainView: View {
                 if let actionError = state.actionError {
                     ActionErrorBanner(message: actionError) { state.actionError = nil }
                 }
-                DetailView(
-                    item: selected?.item, section: selected?.section, state: state,
-                    terminal: Text(selected?.item.id ?? ""))
+                DetailView(item: selected?.item, section: selected?.section, state: state, terminals: terminals)
             }
         }
     }
