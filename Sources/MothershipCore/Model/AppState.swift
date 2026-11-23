@@ -109,11 +109,15 @@ public final class AppState {
     public func stop(sessionName: String) async -> Void {
         guard knows(sessionName) else { return }
         do {
+            // The process being stopped; a process started during the grace period is left alone.
+            let target = try await tmux.listPanes()
+                .first { $0.sessionName == sessionName && !$0.isDead && $0.pid > 0 }?.pid
             try await tmux.interrupt(session: sessionName)
             try? await Task.sleep(for: stopGracePeriod)
             let current = try await tmux.listPanes()
-            if let pane = current.first(where: { $0.sessionName == sessionName }), !pane.isDead, pane.pid > 0 {
-                signalProcessGroup(pane.pid)
+            if let target,
+               current.contains(where: { $0.sessionName == sessionName && !$0.isDead && $0.pid == target }) {
+                signalProcessGroup(target)
             }
         } catch {
             report(error)

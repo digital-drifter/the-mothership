@@ -139,7 +139,19 @@ private func makeState(
         let live = pane("ms-es-cmd-vite", pid: 4242, kind: .command, name: "Vite")
         let dead = pane("ms-es-cmd-vite", dead: true, kind: .command, name: "Vite")
         let fake = FakeTmux()
-        await fake.script([[live], [dead]])
+        await fake.script([[live], [live], [dead]])
+        let signals = Signals()
+        let (state, _) = try makeState(tmux: fake, signals: signals)
+        await state.refresh()
+        await state.stop(sessionName: "ms-es-cmd-vite")
+        #expect(signals.all.isEmpty)
+    }
+
+    @Test func testStopDoesNotSignalACommandRestartedDuringGrace() async throws -> Void {
+        let live = pane("ms-es-cmd-vite", pid: 4242, kind: .command, name: "Vite")
+        let restarted = pane("ms-es-cmd-vite", pid: 5555, kind: .command, name: "Vite")
+        let fake = FakeTmux()
+        await fake.script([[live], [live], [restarted]])
         let signals = Signals()
         let (state, _) = try makeState(tmux: fake, signals: signals)
         await state.refresh()
