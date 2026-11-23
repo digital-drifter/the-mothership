@@ -4,15 +4,14 @@ import SwiftUI
 /// Projects with their Agents / Commands / Terminals, plus the per-item actions.
 struct SidebarView: View {
     let state: AppState
-    @Binding var selection: String?
+    @Bindable var navigation: SidebarNavigation
 
-    @State private var collapsed: Set<String> = []
     @State private var renaming: SidebarItem?
     @State private var renameDraft = ""
     @State private var closing: SidebarItem?
 
     var body: some View {
-        List(selection: $selection) {
+        List(selection: $navigation.selection) {
             ForEach(state.sections) { section in
                 Section(isExpanded: expansion(of: section.id)) {
                     rows(for: section)
@@ -82,7 +81,7 @@ struct SidebarView: View {
                 Button(template.name) {
                     Task {
                         if let id = await state.newAgent(projectSlug: section.id, templateName: template.name) {
-                            selection = id
+                            navigation.selection = id
                         }
                     }
                 }
@@ -100,7 +99,7 @@ struct SidebarView: View {
     private func newTerminalButton(_ section: ProjectSection) -> some View {
         Button {
             Task {
-                if let id = await state.newTerminal(projectSlug: section.id) { selection = id }
+                if let id = await state.newTerminal(projectSlug: section.id) { navigation.selection = id }
             }
         } label: {
             Image(systemName: "plus")
@@ -147,16 +146,14 @@ struct SidebarView: View {
     private func close(_ item: SidebarItem) -> Void {
         Task {
             await state.close(sessionName: item.id)
-            if selection == item.id { selection = nil }
+            if navigation.selection == item.id { navigation.selection = nil }
         }
     }
 
     private func expansion(of projectID: String) -> Binding<Bool> {
         Binding(
-            get: { !collapsed.contains(projectID) },
-            set: { expanded in
-                if expanded { collapsed.remove(projectID) } else { collapsed.insert(projectID) }
-            })
+            get: { navigation.isExpanded(projectID) },
+            set: { navigation.setExpanded($0, for: projectID) })
     }
 
     private func isPresented(_ item: Binding<SidebarItem?>) -> Binding<Bool> {
