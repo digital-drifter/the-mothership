@@ -149,9 +149,38 @@ struct ControlModeIntegrationTests {
         try await fixture.startSession("ms-proj-cmd-exit", ["/bin/sh", "-c", "sleep 30"])
         let attachment = try fixture.attach("ms-proj-cmd-exit")
         #expect(await eventually { attachment.received.seed != nil })
+        // tmux 3.8 replies to a waiting command (wait-for, run-shell) at once but stalls the client's command
+        // queue behind it, so the next command stays pending. A graceful kill-server wakes the waiter and
+        // replies before exiting, so only an abrupt server death leaves a command unanswered at EOF.
+        let pid = try await fixture.client.run(["display-message", "-p", "#{pid}"])
+        attachment.client.send("wait-for ms-never-signalled")
+        let pending = Task { try await attachment.client.command("display-message -p stalled") }
+        try await Task.sleep(for: .milliseconds(200))
+        let serverPID = try #require(pid_t(pid.trimmingCharacters(in: .whitespacesAndNewlines)))
+        kill(serverPID, SIGKILL)
+        do {
+            _ = try await pending.value
+            Issue.record("pending command should fail when tmux exits")
+        } catch {
+            #expect(error as? ControlClientError == .exited)
+        }
+        #expect(await eventually { attachment.received.didExit })
+    }
+
+    @Test func testCommandAfterExitFailsAsNotRunning() async throws -> Void {
+        let fixture = try ControlFixture()
+        defer { fixture.cleanup() }
+        try await fixture.startSession("ms-proj-cmd-gone", ["/bin/sh", "-c", "sleep 30"])
+        let attachment = try fixture.attach("ms-proj-cmd-gone")
+        #expect(await eventually { attachment.received.seed != nil })
         attachment.client.terminate()
         #expect(await eventually { attachment.received.didExit })
-        await #expect(throws: ControlClientError.self) { try await attachment.client.command("display-message -p x") }
+        do {
+            _ = try await attachment.client.command("display-message -p x")
+            Issue.record("command after exit should fail")
+        } catch {
+            #expect(error as? ControlClientError == .notRunning)
+        }
     }
 
     @Test func testReattachSeedsHistory() async throws -> Void {
@@ -200,6 +229,21 @@ struct ControlModeIntegrationTests {
         #expect(occurrences(of: "NORMAL-HISTORY", in: seed) == 1)
         #expect(occurrences(of: "fill-60", in: seed) == 1)
         #expect(occurrences(of: "ALT-SCREEN", in: seed) == 1)
+        // The saved normal-screen cursor is positioned right before ?1049h saves it.
+        #expect(seed.range(of: "\u{1b}\\[[0-9]+;[0-9]+H\u{1b}\\[\\?1049h", options: .regularExpression) != nil)
+    }
+
+    @Test func testReattachRestoresBracketedPaste() async throws -> Void {
+        let fixture = try ControlFixture()
+        defer { fixture.cleanup() }
+        let session = "ms-proj-cmd-paste"
+        try await fixture.startSession(session, ["/bin/sh", "-c", "printf '\\033[?2004h'; sleep 30"])
+        #expect(await eventually {
+            (try? await fixture.client.run(["display-message", "-p", "-t", session, "#{bracket_paste_flag}"])) == "1\n"
+        })
+        let attachment = try fixture.attach(session)
+        #expect(await eventually { attachment.received.seed != nil })
+        #expect(attachment.received.seed?.contains("\u{1b}[?2004h") == true)
     }
 
     @Test func testReattachToDeadPaneShowsLastOutput() async throws -> Void {
@@ -253,7 +297,7 @@ struct ControlModeIntegrationTests {
             line.hasPrefix("n-") ? Int(line.dropFirst(2)) : nil
         }
         // The last line may still be mid-write when the test samples it.
-        if !all.hasSuffix("\n") { numbers.removeLast() }
+        if !all.hasSuffix("\n") { _ = numbers.popLast() }
         let seedCount = (seedText ?? "").split(separator: "\n").filter { $0.hasPrefix("n-") }.count
         #expect(seedCount > 24)
         #expect(numbers.count > seedCount)
