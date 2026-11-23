@@ -16,6 +16,8 @@ public final class AppState {
     @ObservationIgnored private let directoryExists: (String) -> Bool
     @ObservationIgnored private var config = MothershipConfig(projects: [])
     @ObservationIgnored private var panes: [PaneInfo] = []
+    /// Names handed out by in-flight creates, so concurrent creates never pick the same number.
+    @ObservationIgnored private var pendingNames: [String: Set<String>] = [:]
 
     public init(
         tmux: TmuxCommanding, configURL: URL, shell: String, homeDirectory: String,
@@ -82,8 +84,8 @@ public final class AppState {
         guard folderExists(project) else { return }
         let session = SessionName.make(projectSlug: projectSlug, kind: .command, id: commandSlug)
         do {
-            if panes.contains(where: { $0.sessionName == session }) {
-                try await tmux.respawn(session: session)
+            if let existing = panes.first(where: { $0.sessionName == session }) {
+                if existing.isDead { try await tmux.respawn(session: session) }
             } else {
                 try await tmux.newSession(
                     name: session, directory: project.path, command: [shell, "-lc", command.run],
@@ -172,6 +174,8 @@ public final class AppState {
         }
         guard folderExists(project) else { return nil }
         let name = "\(prefix) \(nextNumber(prefix: prefix, in: projectSlug))"
+        pendingNames[projectSlug, default: []].insert(name)
+        defer { pendingNames[projectSlug]?.remove(name) }
         let session = SessionName.make(projectSlug: projectSlug, kind: kind, id: SessionName.randomID())
         let argv = run.map { [shell, "-lc", $0] } ?? [shell, "-l"]
         var result: String?
@@ -188,16 +192,23 @@ public final class AppState {
     }
 
     private func nextNumber(prefix: String, in projectSlug: String) -> Int {
-        guard let section = sections.first(where: { $0.id == projectSlug }) else { return 1 }
-        let highest = (section.agents + section.terminals).compactMap { item -> Int? in
-            guard item.displayName.hasPrefix(prefix + " ") else { return nil }
-            return Int(item.displayName.dropFirst(prefix.count + 1))
+        let existing = sections.first(where: { $0.id == projectSlug })
+            .map { ($0.agents + $0.terminals).map(\.displayName) } ?? []
+        let highest = (existing + Array(pendingNames[projectSlug] ?? [])).compactMap { name -> Int? in
+            guard name.hasPrefix(prefix + " ") else { return nil }
+            return Int(name.dropFirst(prefix.count + 1))
         }.max() ?? 0
         return highest + 1
     }
 
     private func respawn(_ sessionName: String) async -> Void {
         guard knows(sessionName) else { return }
+        if let slug = panes.first(where: { $0.sessionName == sessionName })?.project
+            ?? sections.first(where: { ($0.agents + $0.commands + $0.terminals).contains { $0.id == sessionName } })?.id,
+           let project = config.projects.first(where: { $0.slug == slug }),
+           !folderExists(project) {
+            return
+        }
         do {
             try await tmux.respawn(session: sessionName)
         } catch {

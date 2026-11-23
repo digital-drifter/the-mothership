@@ -179,4 +179,103 @@ private func makeState(
         await state.start(commandSlug: "vite", projectSlug: "es")
         #expect(state.actionError == "boom")
     }
+
+    @Test func testRestartAndRelaunchRespawnAndRefresh() async throws {
+        let fake = FakeTmux(panes: [
+            pane("ms-es-cmd-vite", kind: .command, name: "Vite"),
+            pane("ms-es-agent-aaaaaa", kind: .agent, name: "Claude 1", template: "Claude"),
+        ])
+        let (state, _) = try makeState(tmux: fake)
+        await state.refresh()
+        await state.restart(sessionName: "ms-es-cmd-vite")
+        await state.relaunch(sessionName: "ms-es-agent-aaaaaa")
+        let calls = await fake.calls
+        #expect(calls.contains(["respawn-pane", "-k", "-t", "ms-es-cmd-vite"]))
+        #expect(calls.contains(["respawn-pane", "-k", "-t", "ms-es-agent-aaaaaa"]))
+        #expect(calls.last?.first == "list-panes")
+    }
+
+    @Test func testRestartAndRelaunchInMissingFolderRunNothing() async throws {
+        let fake = FakeTmux(panes: [pane("ms-es-cmd-vite", kind: .command, name: "Vite")])
+        let (state, _) = try makeState(tmux: fake, folderOK: false)
+        await state.refresh()
+        let before = await fake.calls.count
+        await state.restart(sessionName: "ms-es-cmd-vite")
+        #expect(state.actionError == "Folder not found: /Users/test/Code/es")
+        state.actionError = nil
+        await state.relaunch(sessionName: "ms-es-cmd-vite")
+        #expect(state.actionError == "Folder not found: /Users/test/Code/es")
+        #expect(await fake.calls.count == before)
+    }
+
+    @Test func testStartOnRunningCommandDoesNotRespawn() async throws {
+        let fake = FakeTmux(panes: [pane("ms-es-cmd-vite", kind: .command, name: "Vite")])
+        let (state, _) = try makeState(tmux: fake)
+        await state.refresh()
+        await state.start(commandSlug: "vite", projectSlug: "es")
+        let calls = await fake.calls
+        #expect(!calls.contains { $0.first == "respawn-pane" || $0.first == "new-session" })
+        #expect(calls.last?.first == "list-panes")
+    }
+
+    @Test func testConcurrentNewTerminalsGetDistinctNames() async throws {
+        let fake = FakeTmux()
+        let (state, _) = try makeState(tmux: fake)
+        async let a = state.newTerminal(projectSlug: "es")
+        async let b = state.newTerminal(projectSlug: "es")
+        _ = await (a, b)
+        let names = await fake.calls.filter { $0.first == "new-session" }.compactMap { args -> String? in
+            guard let i = args.firstIndex(of: "@ms_name") else { return nil }
+            return args[i + 1]
+        }
+        #expect(Set(names) == ["Terminal 1", "Terminal 2"])
+    }
+
+    @Test func testCloseKillsSessionAndRefreshes() async throws {
+        let fake = FakeTmux(panes: [pane("ms-es-term-aaaaaa", kind: .terminal, name: "Terminal 1")])
+        let (state, _) = try makeState(tmux: fake)
+        await state.refresh()
+        await state.close(sessionName: "ms-es-term-aaaaaa")
+        let calls = await fake.calls
+        #expect(calls.contains(["kill-session", "-t", "ms-es-term-aaaaaa"]))
+        #expect(calls.last?.first == "list-panes")
+    }
+
+    @Test func testRenameSetsNameAndRefreshes() async throws {
+        let fake = FakeTmux(panes: [pane("ms-es-term-aaaaaa", kind: .terminal, name: "Terminal 1")])
+        let (state, _) = try makeState(tmux: fake)
+        await state.refresh()
+        await state.rename(sessionName: "ms-es-term-aaaaaa", to: "Logs")
+        let calls = await fake.calls
+        #expect(calls.contains(["set-option", "-t", "ms-es-term-aaaaaa", "@ms_name", "Logs"]))
+        #expect(calls.last?.first == "list-panes")
+    }
+
+    @Test func testStopAllKillsServerAndRefreshes() async throws {
+        let fake = FakeTmux()
+        let (state, _) = try makeState(tmux: fake)
+        await state.stopAll()
+        let calls = await fake.calls
+        #expect(calls.first == ["kill-server"])
+        #expect(calls.last?.first == "list-panes")
+    }
+
+    @Test func testNewTerminalAndAgentInMissingFolderRunNothing() async throws {
+        let fake = FakeTmux()
+        let (state, _) = try makeState(tmux: fake, folderOK: false)
+        #expect(await state.newTerminal(projectSlug: "es") == nil)
+        #expect(state.actionError == "Folder not found: /Users/test/Code/es")
+        state.actionError = nil
+        #expect(await state.newAgent(projectSlug: "es", templateName: "Claude") == nil)
+        #expect(state.actionError == "Folder not found: /Users/test/Code/es")
+        #expect(await fake.calls.isEmpty)
+    }
+
+    @Test func testNewAgentWithUnknownTemplateSetsError() async throws {
+        let fake = FakeTmux()
+        let (state, _) = try makeState(tmux: fake)
+        #expect(await state.newAgent(projectSlug: "es", templateName: "Nope") == nil)
+        #expect(state.actionError != nil)
+        #expect(await fake.calls.isEmpty)
+    }
 }
