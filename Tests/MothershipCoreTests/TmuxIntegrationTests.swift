@@ -138,6 +138,28 @@ struct TmuxIntegrationTests {
         #expect(after?.isDead == false)
     }
 
+    @Test func testRespawnWithCommandRunsItInTheGivenDirectory() async throws -> Void {
+        let fixture = try Fixture()
+        defer { fixture.cleanup() }
+        try await fixture.client.newSession(
+            name: "ms-proj-cmd-edit", directory: "/tmp",
+            command: ["/bin/sh", "-c", "sleep 30"], metadata: fixture.metadata())
+        _ = try await fixture.waitForPane("ms-proj-cmd-edit") { _ in true }
+        let out = fixture.directory.appendingPathComponent("edited.txt").path
+        // The final argument ends in `;`, which tmux would otherwise read as a command separator.
+        try await fixture.client.respawn(
+            session: "ms-proj-cmd-edit", directory: fixture.directory.path,
+            command: ["/bin/sh", "-c", "pwd > \(out); echo \"$0\" >> \(out)", "tail;"])
+        let deadline = Date().addingTimeInterval(3)
+        var text = ""
+        while Date() < deadline, !text.contains("tail;") {
+            text = (try? String(contentsOfFile: out, encoding: .utf8)) ?? ""
+            if !text.contains("tail;") { try await Task.sleep(for: .milliseconds(50)) }
+        }
+        let directory = URL(fileURLWithPath: fixture.directory.path).resolvingSymlinksInPath().path
+        #expect(text == "\(directory)\ntail;\n")
+    }
+
     @Test func testSetNameAndKillSession() async throws -> Void {
         let fixture = try Fixture()
         defer { fixture.cleanup() }

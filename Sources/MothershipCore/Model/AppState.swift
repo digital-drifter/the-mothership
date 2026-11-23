@@ -92,7 +92,9 @@ public final class AppState {
         let session = SessionName.make(projectSlug: projectSlug, kind: .command, id: commandSlug)
         do {
             if let existing = panes.first(where: { $0.sessionName == session }) {
-                if existing.isDead { try await tmux.respawn(session: session) }
+                if existing.isDead {
+                    try await tmux.respawn(session: session, directory: project.path, command: [shell, "-lc", command.run])
+                }
             } else {
                 try await tmux.newSession(
                     name: session, directory: project.path, command: [shell, "-lc", command.run],
@@ -222,11 +224,28 @@ public final class AppState {
             return
         }
         do {
-            try await tmux.respawn(session: sessionName)
+            if let (project, command) = configuredCommand(sessionName) {
+                // Commands run what the config says now; agents and terminals rerun their original command.
+                try await tmux.respawn(session: sessionName, directory: project.path, command: [shell, "-lc", command.run])
+            } else {
+                try await tmux.respawn(session: sessionName)
+            }
         } catch {
             report(error)
         }
         await refresh()
+    }
+
+    /// The config entry of a command session; nil for agents, terminals and orphan commands.
+    private func configuredCommand(_ sessionName: String) -> (ProjectConfig, CommandConfig)? {
+        for project in config.projects {
+            if let command = project.commands.first(where: {
+                SessionName.make(projectSlug: project.slug, kind: .command, id: $0.slug) == sessionName
+            }) {
+                return (project, command)
+            }
+        }
+        return nil
     }
 
     private func knows(_ sessionName: String) -> Bool {

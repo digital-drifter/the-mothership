@@ -126,8 +126,13 @@ extension TmuxCommanding {
         _ = try await run(args)
     }
 
-    public func respawn(session: String) async throws -> Void {
-        _ = try await run(["respawn-pane", "-k", "-t", session])
+    /// Restarts the pane's process. Without `command` tmux reuses the pane's original command and directory;
+    /// with one, the pane runs `command` in `directory` instead.
+    public func respawn(session: String, directory: String? = nil, command: [String] = []) async throws -> Void {
+        var args = ["respawn-pane", "-k"]
+        if let directory { args += ["-c", Self.escapeTrailingSemicolon(directory)] }
+        args += ["-t", session] + command.map(Self.escapeTrailingSemicolon)
+        _ = try await run(args)
     }
 
     public func interrupt(session: String) async throws -> Void {

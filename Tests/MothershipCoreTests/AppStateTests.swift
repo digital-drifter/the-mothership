@@ -96,7 +96,9 @@ private func makeState(
         await state.refresh()
         await state.start(commandSlug: "vite", projectSlug: "es")
         let calls = await fake.calls
-        #expect(calls.contains(["respawn-pane", "-k", "-t", "ms-es-cmd-vite"]))
+        #expect(calls.contains([
+            "respawn-pane", "-k", "-c", "/Users/test/Code/es", "-t", "ms-es-cmd-vite", "/bin/zsh", "-lc", "npm run dev",
+        ]))
         #expect(!calls.contains { $0.first == "new-session" })
     }
 
@@ -209,9 +211,38 @@ private func makeState(
         await state.restart(sessionName: "ms-es-cmd-vite")
         await state.relaunch(sessionName: "ms-es-agent-aaaaaa")
         let calls = await fake.calls
-        #expect(calls.contains(["respawn-pane", "-k", "-t", "ms-es-cmd-vite"]))
+        #expect(calls.contains([
+            "respawn-pane", "-k", "-c", "/Users/test/Code/es", "-t", "ms-es-cmd-vite", "/bin/zsh", "-lc", "npm run dev",
+        ]))
         #expect(calls.contains(["respawn-pane", "-k", "-t", "ms-es-agent-aaaaaa"]))
         #expect(calls.last?.first == "list-panes")
+    }
+
+    @Test func testStartAndRestartUseTheEditedRunAndPath() async throws -> Void {
+        let fake = FakeTmux(panes: [pane("ms-es-cmd-vite", dead: true, kind: .command, name: "Vite")])
+        let (state, url) = try makeState(tmux: fake)
+        await state.refresh()
+        try validYAML
+            .replacingOccurrences(of: "npm run dev", with: "pnpm dev --port 5174")
+            .replacingOccurrences(of: "~/Code/es", with: "~/Code/es-next")
+            .write(to: url, atomically: true, encoding: .utf8)
+        state.reloadConfig()
+        await state.start(commandSlug: "vite", projectSlug: "es")
+        await state.restart(sessionName: "ms-es-cmd-vite")
+        let respawns = await fake.calls.filter { $0.first == "respawn-pane" }
+        let expected = [
+            "respawn-pane", "-k", "-c", "/Users/test/Code/es-next", "-t", "ms-es-cmd-vite",
+            "/bin/zsh", "-lc", "pnpm dev --port 5174",
+        ]
+        #expect(respawns == [expected, expected])
+    }
+
+    @Test func testRestartOfOrphanCommandReusesItsOriginalCommand() async throws -> Void {
+        let fake = FakeTmux(panes: [pane("ms-es-cmd-old", kind: .command, name: "Old")])
+        let (state, _) = try makeState(tmux: fake)
+        await state.refresh()
+        await state.restart(sessionName: "ms-es-cmd-old")
+        #expect(await fake.calls.contains(["respawn-pane", "-k", "-t", "ms-es-cmd-old"]))
     }
 
     @Test func testRestartAndRelaunchInMissingFolderRunNothing() async throws {
