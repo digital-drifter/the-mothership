@@ -121,7 +121,7 @@ extension TmuxCommanding {
             ("@ms_name", metadata.name), ("@ms_template", metadata.template),
         ]
         for (key, value) in options {
-            args += [";", "set-option", "-t", Self.escapeTrailingSemicolon(name), key, Self.escapeTrailingSemicolon(value)]
+            args += [";", "set-option", "-t", SessionName.target(name), key, Self.escapeTrailingSemicolon(value)]
         }
         _ = try await run(args)
     }
@@ -131,20 +131,20 @@ extension TmuxCommanding {
     public func respawn(session: String, directory: String? = nil, command: [String] = []) async throws -> Void {
         var args = ["respawn-pane", "-k"]
         if let directory { args += ["-c", Self.escapeTrailingSemicolon(directory)] }
-        args += ["-t", session] + command.map(Self.escapeTrailingSemicolon)
+        args += ["-t", SessionName.target(session)] + command.map(Self.escapeTrailingSemicolon)
         _ = try await run(args)
     }
 
     public func interrupt(session: String) async throws -> Void {
-        _ = try await run(["send-keys", "-t", session, "C-c"])
+        _ = try await run(["send-keys", "-t", SessionName.target(session), "C-c"])
     }
 
     public func setName(session: String, name: String) async throws -> Void {
-        _ = try await run(["set-option", "-t", Self.escapeTrailingSemicolon(session), "@ms_name", Self.escapeTrailingSemicolon(name)])
+        _ = try await run(["set-option", "-t", SessionName.target(session), "@ms_name", Self.escapeTrailingSemicolon(name)])
     }
 
     public func killSession(_ name: String) async throws -> Void {
-        _ = try await run(["kill-session", "-t", name])
+        _ = try await run(["kill-session", "-t", SessionName.target(name)])
     }
 
     public func killServer() async throws -> Void {

@@ -39,9 +39,10 @@ public final class PaneStream: @unchecked Sendable {
         set { lock.withLock { failureHandler = newValue } }
     }
 
-    public init(channel: ControlChannel, target: String) {
+    /// `session` is a session name; every command targets exactly that session.
+    public init(channel: ControlChannel, session: String) {
         self.channel = channel
-        self.target = target
+        self.target = SessionName.target(session)
         channel.onEvent = { [weak self] event in self?.handle(event) }
     }
 

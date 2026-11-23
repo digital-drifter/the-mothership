@@ -97,7 +97,7 @@ private func makeState(
         await state.start(commandSlug: "vite", projectSlug: "es")
         let calls = await fake.calls
         #expect(calls.contains([
-            "respawn-pane", "-k", "-c", "/Users/test/Code/es", "-t", "ms-es-cmd-vite", "/bin/zsh", "-lc", "npm run dev",
+            "respawn-pane", "-k", "-c", "/Users/test/Code/es", "-t", "=ms-es-cmd-vite:", "/bin/zsh", "-lc", "npm run dev",
         ]))
         #expect(!calls.contains { $0.first == "new-session" })
     }
@@ -132,7 +132,7 @@ private func makeState(
         await state.refresh()
         await state.stop(sessionName: "ms-es-cmd-vite")
         #expect(signals.all == [4242])
-        #expect(await fake.calls.contains(["send-keys", "-t", "ms-es-cmd-vite", "C-c"]))
+        #expect(await fake.calls.contains(["send-keys", "-t", "=ms-es-cmd-vite:", "C-c"]))
     }
 
     @Test func testStopDoesNotSignalWhenPaneDiesInTime() async throws -> Void {
@@ -203,7 +203,7 @@ private func makeState(
         await state.runAutostart()
         let calls = await fake.calls
         #expect(calls.contains([
-            "respawn-pane", "-k", "-c", "/Users/test/Code/es", "-t", "ms-es-cmd-vite", "/bin/zsh", "-lc", "npm run dev",
+            "respawn-pane", "-k", "-c", "/Users/test/Code/es", "-t", "=ms-es-cmd-vite:", "/bin/zsh", "-lc", "npm run dev",
         ]))
         #expect(!calls.contains { $0.first == "new-session" })
     }
@@ -235,9 +235,9 @@ private func makeState(
         await state.relaunch(sessionName: "ms-es-agent-aaaaaa")
         let calls = await fake.calls
         #expect(calls.contains([
-            "respawn-pane", "-k", "-c", "/Users/test/Code/es", "-t", "ms-es-cmd-vite", "/bin/zsh", "-lc", "npm run dev",
+            "respawn-pane", "-k", "-c", "/Users/test/Code/es", "-t", "=ms-es-cmd-vite:", "/bin/zsh", "-lc", "npm run dev",
         ]))
-        #expect(calls.contains(["respawn-pane", "-k", "-t", "ms-es-agent-aaaaaa"]))
+        #expect(calls.contains(["respawn-pane", "-k", "-t", "=ms-es-agent-aaaaaa:"]))
         #expect(calls.last?.first == "list-panes")
     }
 
@@ -254,7 +254,7 @@ private func makeState(
         await state.restart(sessionName: "ms-es-cmd-vite")
         let respawns = await fake.calls.filter { $0.first == "respawn-pane" }
         let expected = [
-            "respawn-pane", "-k", "-c", "/Users/test/Code/es-next", "-t", "ms-es-cmd-vite",
+            "respawn-pane", "-k", "-c", "/Users/test/Code/es-next", "-t", "=ms-es-cmd-vite:",
             "/bin/zsh", "-lc", "pnpm dev --port 5174",
         ]
         #expect(respawns == [expected, expected])
@@ -265,7 +265,7 @@ private func makeState(
         let (state, _) = try makeState(tmux: fake)
         await state.refresh()
         await state.restart(sessionName: "ms-es-cmd-old")
-        #expect(await fake.calls.contains(["respawn-pane", "-k", "-t", "ms-es-cmd-old"]))
+        #expect(await fake.calls.contains(["respawn-pane", "-k", "-t", "=ms-es-cmd-old:"]))
     }
 
     @Test func testRestartAndRelaunchInMissingFolderRunNothing() async throws -> Void {
@@ -310,7 +310,7 @@ private func makeState(
         await state.refresh()
         await state.close(sessionName: "ms-es-term-aaaaaa")
         let calls = await fake.calls
-        #expect(calls.contains(["kill-session", "-t", "ms-es-term-aaaaaa"]))
+        #expect(calls.contains(["kill-session", "-t", "=ms-es-term-aaaaaa:"]))
         #expect(calls.last?.first == "list-panes")
     }
 
@@ -320,7 +320,7 @@ private func makeState(
         await state.refresh()
         await state.rename(sessionName: "ms-es-term-aaaaaa", to: "Logs")
         let calls = await fake.calls
-        #expect(calls.contains(["set-option", "-t", "ms-es-term-aaaaaa", "@ms_name", "Logs"]))
+        #expect(calls.contains(["set-option", "-t", "=ms-es-term-aaaaaa:", "@ms_name", "Logs"]))
         #expect(calls.last?.first == "list-panes")
     }
 

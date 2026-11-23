@@ -174,6 +174,24 @@ struct TmuxIntegrationTests {
         #expect(try await fixture.client.listPanes().isEmpty)
     }
 
+    @Test func testSessionCommandsNeverActOnALongerNameWithTheSamePrefix() async throws -> Void {
+        let fixture = try Fixture()
+        defer { fixture.cleanup() }
+        try await fixture.client.newSession(
+            name: "ms-proj-cmd-vite-dev", directory: "/tmp",
+            command: ["/bin/sh", "-c", "trap '' INT; sleep 30"], metadata: fixture.metadata())
+        let before = try #require(try await fixture.waitForPane("ms-proj-cmd-vite-dev") { _ in true })
+        // tmux would resolve a plain `-t ms-proj-cmd-vite` to the only session it prefixes.
+        await #expect(throws: TmuxError.self) { try await fixture.client.respawn(session: "ms-proj-cmd-vite") }
+        await #expect(throws: TmuxError.self) { try await fixture.client.interrupt(session: "ms-proj-cmd-vite") }
+        await #expect(throws: TmuxError.self) { try await fixture.client.setName(session: "ms-proj-cmd-vite", name: "X") }
+        await #expect(throws: TmuxError.self) { try await fixture.client.killSession("ms-proj-cmd-vite") }
+        let after = try await fixture.client.listPanes().first { $0.sessionName == "ms-proj-cmd-vite-dev" }
+        #expect(after?.pid == before.pid)
+        #expect(after?.name == "Web")
+        #expect(after?.isDead == false)
+    }
+
     @Test func testArgumentEndingInSemicolonIsPassedVerbatim() async throws -> Void {
         let fixture = try Fixture()
         defer { fixture.cleanup() }

@@ -74,7 +74,7 @@ private final class FailureLog: @unchecked Sendable {
 
 private func makeStream() -> (FakeChannel, PaneStream, ByteLog) {
     let channel = FakeChannel()
-    let stream = PaneStream(channel: channel, target: "ms-p-cmd-x")
+    let stream = PaneStream(channel: channel, session: "ms-p-cmd-x")
     let log = ByteLog()
     stream.onBytes = { log.append($0) }
     return (channel, stream, log)
@@ -84,7 +84,7 @@ private func makeStream() -> (FakeChannel, PaneStream, ByteLog) {
     @Test func testAttachSendsResizeThenSnapshotCommand() -> Void {
         let (channel, stream, _) = makeStream()
         stream.attach(cols: 120, rows: 40)
-        #expect(channel.sent == ["refresh-client -C 120x40", SeedBuilder.snapshotCommand(target: "ms-p-cmd-x")])
+        #expect(channel.sent == ["refresh-client -C 120x40", SeedBuilder.snapshotCommand(target: "=ms-p-cmd-x:")])
     }
 
     @Test func testSnapshotCommandIsOneTmuxCommandPerLine() -> Void {
@@ -124,7 +124,7 @@ private func makeStream() -> (FakeChannel, PaneStream, ByteLog) {
         stream.attach(cols: 80, rows: 24)
         failedSnapshotReplies().forEach(channel.push)
         channel.push(.output(paneID: "%1", data: bytes("dropped")))
-        let snapshot = SeedBuilder.snapshotCommand(target: "ms-p-cmd-x")
+        let snapshot = SeedBuilder.snapshotCommand(target: "=ms-p-cmd-x:")
         #expect(channel.sent == ["refresh-client -C 80x24", snapshot, snapshot])
         #expect(log.chunks.isEmpty)
         snapshotReplies(paneID: "%1", screen: ["$"]).forEach(channel.push)
@@ -206,7 +206,7 @@ private func makeStream() -> (FakeChannel, PaneStream, ByteLog) {
         let (channel, stream, _) = makeStream()
         let input = (0..<3000).map { UInt8(truncatingIfNeeded: $0 * 7) }
         stream.sendInput(input)
-        let prefix = "send-keys -H -t ms-p-cmd-x "
+        let prefix = "send-keys -H -t =ms-p-cmd-x: "
         #expect(channel.sent.count == 3)
         var decoded: [UInt8] = []
         for line in channel.sent {

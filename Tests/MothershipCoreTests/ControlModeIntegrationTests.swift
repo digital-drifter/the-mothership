@@ -65,7 +65,7 @@ private final class ControlFixture: @unchecked Sendable {
     /// Starts a control client with a pane stream; `attachStream: false` leaves `stream.attach` to the test.
     func attach(_ session: String, cols: Int = 80, rows: Int = 24, attachStream: Bool = true) throws -> Attachment {
         let control = ControlClient(tmuxPath: tmuxPath, configPath: configPath, socketName: socket, session: session)
-        let stream = PaneStream(channel: control, target: session)
+        let stream = PaneStream(channel: control, session: session)
         let received = Received()
         stream.onBytes = { received.append($0) }
         control.onExit = { received.markExited() }
@@ -167,6 +167,15 @@ struct ControlModeIntegrationTests {
             #expect(error as? ControlClientError == .exited)
         }
         #expect(await eventually { attachment.received.didExit })
+    }
+
+    @Test func testAttachNeverPicksALongerNameWithTheSamePrefix() async throws -> Void {
+        let fixture = try ControlFixture()
+        defer { fixture.cleanup() }
+        try await fixture.startSession("ms-proj-cmd-vite-dev", ["/bin/sh", "-c", "echo DEV-PANE; sleep 30"])
+        let attachment = try fixture.attach("ms-proj-cmd-vite")
+        #expect(await eventually { attachment.received.didExit })
+        #expect(!attachment.received.text.contains("DEV-PANE"))
     }
 
     @Test func testCommandAfterExitFailsAsNotRunning() async throws -> Void {

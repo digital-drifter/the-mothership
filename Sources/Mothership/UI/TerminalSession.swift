@@ -46,7 +46,7 @@ final class TerminalSession {
         let client = ControlClient(
             tmuxPath: tmux.tmuxPath, configPath: tmux.tmuxConfPath, socketName: tmux.socketName,
             session: sessionName)
-        let stream = PaneStream(channel: client, target: sessionName)
+        let stream = PaneStream(channel: client, session: sessionName)
         // Callbacks arrive in order on the client's serial queue; the main queue keeps that order.
         stream.onBytes = { [weak self] bytes in
             DispatchQueue.main.async {
