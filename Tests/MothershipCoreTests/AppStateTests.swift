@@ -359,6 +359,20 @@ private func makeState(
         #expect(!(await fake.calls.contains { $0.first == "kill-session" }))
     }
 
+    @Test func testAnOlderPaneListNeverReplacesANewerOne() async throws -> Void {
+        let fake = FakeTmux()
+        let (state, _) = try makeState(tmux: fake)
+        // The 1 s loop's list-panes starts before a terminal is created but finishes after create's refresh.
+        await fake.holdNextListPanes()
+        let loop = Task { await state.refresh() }
+        while await fake.heldCount == 0 { await Task.yield() }
+        await fake.script([[pane("ms-es-term-aaaaaa", kind: .terminal, name: "Terminal 1")]])
+        await state.refresh()
+        await fake.releaseHeld()
+        await loop.value
+        #expect(state.sections.first?.terminals.map(\.id) == ["ms-es-term-aaaaaa"])
+    }
+
     @Test func testStopAllKillsServerAndRefreshes() async throws -> Void {
         let fake = FakeTmux()
         let (state, _) = try makeState(tmux: fake)

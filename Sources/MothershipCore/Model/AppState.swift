@@ -23,6 +23,11 @@ public final class AppState {
     @ObservationIgnored private var respawns = RespawnTracker()
     /// False until a config has parsed; until then every command would look like an orphan.
     @ObservationIgnored private var hasLoadedConfig = false
+    /// Refreshes overlap (the 1 s loop and actions); a list older than the one shown is discarded.
+    @ObservationIgnored private var startedRefreshes = 0
+    @ObservationIgnored private var appliedRefresh = 0
+    /// Orphan command sessions with a kill in flight, so overlapping refreshes kill each only once.
+    @ObservationIgnored private var killingOrphans: Set<String> = []
     /// Names handed out by in-flight creates, so concurrent creates never pick the same number.
     @ObservationIgnored private var pendingNames: [String: Set<String>] = [:]
 
@@ -65,14 +70,22 @@ public final class AppState {
     }
 
     public func refresh() async -> Void {
+        startedRefreshes += 1
+        let generation = startedRefreshes
+        let listed: [PaneInfo]
         do {
-            panes = await removingDeadOrphanCommands(try await tmux.listPanes())
-            rebuildSections()
-            let respawned = respawns.update(panes)
-            if !respawned.isEmpty { onRespawn?(respawned) }
+            listed = try await tmux.listPanes()
         } catch {
             report(error)
+            return
         }
+        guard generation > appliedRefresh else { return }
+        appliedRefresh = generation
+        panes = listed
+        rebuildSections()
+        let respawned = respawns.update(panes)
+        if !respawned.isEmpty { onRespawn?(respawned) }
+        await killDeadOrphanCommands(listed)
     }
 
     public func runAutostart() async -> Void {
@@ -245,23 +258,21 @@ public final class AppState {
 
     /// Kills command sessions that are dead and no longer in the config. The sidebar hides them anyway;
     /// left alone they would pile up, and re-adding the command would show their old output.
-    /// A failed kill is reported and the pane kept, so the refresh itself still goes through.
-    private func removingDeadOrphanCommands(_ panes: [PaneInfo]) async -> [PaneInfo] {
-        guard hasLoadedConfig else { return panes }
-        var kept: [PaneInfo] = []
-        for pane in panes {
-            guard pane.kind == .command, pane.isDead, configuredCommand(pane.sessionName) == nil else {
-                kept.append(pane)
-                continue
-            }
+    private func killDeadOrphanCommands(_ panes: [PaneInfo]) async -> Void {
+        guard hasLoadedConfig else { return }
+        let orphans = panes.filter {
+            $0.kind == .command && $0.isDead && configuredCommand($0.sessionName) == nil
+                && !killingOrphans.contains($0.sessionName)
+        }
+        for pane in orphans {
+            killingOrphans.insert(pane.sessionName)
+            defer { killingOrphans.remove(pane.sessionName) }
             do {
                 try await tmux.killSession(pane.sessionName)
             } catch {
                 report(error)
-                kept.append(pane)
             }
         }
-        return kept
     }
 
     /// The config entry of a command session; nil for agents, terminals and orphan commands.
