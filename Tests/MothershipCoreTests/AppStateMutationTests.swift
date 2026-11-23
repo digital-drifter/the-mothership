@@ -103,6 +103,39 @@ import Testing
         #expect(await fake.calls.allSatisfy { $0.first == "list-panes" })
     }
 
+    @Test func testEditsAreRefusedWhileProjectsJsonCannotBeSaved() async throws -> Void {
+        let fake = FakeTmux()
+        let (state, store) = try makeState(config: .empty, load: false, tmux: fake)
+        let original = Data("not json".utf8)
+        try original.write(to: store.url)
+        // A read-only folder lets the file be read but not moved aside, so loading leaves saving off.
+        let folder = store.url.deletingLastPathComponent()
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: folder.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: folder.path) }
+        state.load()
+        let loadedConfig = state.config
+        #expect(loadedConfig == .empty)
+
+        func expectRefused(_ label: String) -> Void {
+            #expect(state.config == loadedConfig, "\(label) changed the config")
+            #expect(state.actionError == "Changes can't be saved until the unreadable projects.json is fixed or removed.",
+                    "\(label) gave the wrong error")
+            state.actionError = nil
+        }
+
+        state.actionError = nil
+        state.addProject(path: "/x/new")
+        expectRefused("addProject")
+        state.addAgentTemplate(name: "Aider", run: "aider")
+        expectRefused("addAgentTemplate")
+        state.removeAgentTemplate(name: "Claude")
+        expectRefused("removeAgentTemplate")
+        await state.removeProject(slug: "es")
+        expectRefused("removeProject")
+        #expect(try Data(contentsOf: store.url) == original)
+        #expect(await fake.calls.allSatisfy { $0.first == "list-panes" })
+    }
+
     @Test func testValidateCommandRejectsBlankAndDuplicateNames() throws -> Void {
         let (state, _) = try makeState(tmux: FakeTmux())
         #expect(state.validateCommand(projectSlug: "es", name: "", run: "x", editing: nil) == "Name can't be empty.")
