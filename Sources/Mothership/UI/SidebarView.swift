@@ -12,6 +12,8 @@ struct SidebarView: View {
     @State private var renamingProject: ProjectSection?
     @State private var projectRenameDraft = ""
     @State private var removing: ProjectSection?
+    @State private var sheet: Sheet?
+    @State private var deletingCommand: CommandDeletion?
 
     var body: some View {
         List(selection: $navigation.selection) {
@@ -52,6 +54,27 @@ struct SidebarView: View {
         } message: { section in
             Text(removalMessage(for: section))
         }
+        .sheet(item: $sheet) { sheet in
+            switch sheet {
+            case .newCommand(let slug):
+                CommandSheet(state: state, projectSlug: slug, editing: nil) { navigation.selection = $0 }
+            case .editCommand(let slug, let editing):
+                CommandSheet(state: state, projectSlug: slug, editing: editing) { _ in }
+            case .customAgent(let slug):
+                CustomAgentSheet(state: state, projectSlug: slug) { navigation.selection = $0 }
+            case .manageAgents:
+                ManageAgentsSheet(state: state)
+            }
+        }
+        .confirmationDialog(
+            "Delete \u{201C}\(deletingCommand?.item.displayName ?? "")\u{201D}?", isPresented: isPresented($deletingCommand),
+            presenting: deletingCommand
+        ) { deletion in
+            Button("Delete", role: .destructive) { delete(deletion) }
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text("Its process is still running and will be ended.")
+        }
         .alert("Rename", isPresented: isPresented($renaming), presenting: renaming) { item in
             TextField("Name", text: $renameDraft)
             Button("Rename") { rename(item) }
@@ -74,14 +97,16 @@ struct SidebarView: View {
     private func rows(for section: ProjectSection) -> some View {
         if !section.isOrphan || !section.agents.isEmpty {
             GroupHeader(title: "Agents") {
-                if !section.isOrphan && !state.agents.isEmpty { newAgentMenu(section) }
+                if !section.isOrphan { newAgentMenu(section) }
             }
             ForEach(section.agents) { item in
                 row(item, in: section).contextMenu { sessionMenu(item) }
             }
         }
         if !section.isOrphan || !section.commands.isEmpty {
-            GroupHeader(title: "Commands") { EmptyView() }
+            GroupHeader(title: "Commands") {
+                if !section.isOrphan { newCommandButton(section) }
+            }
             ForEach(section.commands) { item in
                 row(item, in: section).contextMenu { commandMenu(item, in: section) }
             }
@@ -118,6 +143,9 @@ struct SidebarView: View {
                     }
                 }
             }
+            Divider()
+            Button("Custom…") { sheet = .customAgent(projectSlug: section.id) }
+            Button("Manage List…") { sheet = .manageAgents }
         } label: {
             Image(systemName: "plus")
         }
@@ -126,6 +154,17 @@ struct SidebarView: View {
         .fixedSize()
         .help("New agent")
         .accessibilityLabel("New agent")
+    }
+
+    private func newCommandButton(_ section: ProjectSection) -> some View {
+        Button {
+            sheet = .newCommand(projectSlug: section.id)
+        } label: {
+            Image(systemName: "plus")
+        }
+        .buttonStyle(.borderless)
+        .help("New command")
+        .accessibilityLabel("New command")
     }
 
     private func newTerminalButton(_ section: ProjectSection) -> some View {
@@ -153,6 +192,14 @@ struct SidebarView: View {
             .disabled(item.status != .running)
         Button("Restart") { Task { await state.restart(sessionName: item.id) } }
             .disabled(item.status == .notStarted)
+        if !item.isOrphan && !section.isOrphan {
+            Divider()
+            Button("Edit…") { edit(item, in: section) }
+            Button("Delete…") {
+                let deletion = CommandDeletion(item: item, section: section)
+                if item.status == .running { deletingCommand = deletion } else { delete(deletion) }
+            }
+        }
     }
 
     @ViewBuilder
@@ -198,6 +245,25 @@ struct SidebarView: View {
         }
     }
 
+    private func edit(_ item: SidebarItem, in section: ProjectSection) -> Void {
+        let slug = item.commandSlug(in: section)
+        guard let stored = state.config.projects.first(where: { $0.slug == section.id })?.commands.first(where: { $0.slug == slug })
+        else { return }
+        sheet = .editCommand(
+            projectSlug: section.id,
+            editing: CommandSheet.Editing(
+                slug: slug, name: stored.name, run: stored.run, autostart: stored.autostart,
+                isRunning: item.status == .running))
+    }
+
+    private func delete(_ deletion: CommandDeletion) -> Void {
+        let slug = deletion.item.commandSlug(in: deletion.section)
+        Task {
+            await state.deleteCommand(projectSlug: deletion.section.id, commandSlug: slug)
+            if navigation.selection == deletion.item.id { navigation.selection = nil }
+        }
+    }
+
     private func rename(_ item: SidebarItem) -> Void {
         let name = renameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return }
@@ -231,6 +297,29 @@ struct SidebarView: View {
     private func isPresented<Value>(_ item: Binding<Value?>) -> Binding<Bool> {
         Binding(get: { item.wrappedValue != nil }, set: { if !$0 { item.wrappedValue = nil } })
     }
+}
+
+/// The sheets the sidebar presents.
+private enum Sheet: Identifiable {
+    case newCommand(projectSlug: String)
+    case editCommand(projectSlug: String, editing: CommandSheet.Editing)
+    case customAgent(projectSlug: String)
+    case manageAgents
+
+    var id: String {
+        switch self {
+        case .newCommand(let slug): "new-command-\(slug)"
+        case .editCommand(let slug, let editing): "edit-command-\(slug)-\(editing.slug)"
+        case .customAgent(let slug): "custom-agent-\(slug)"
+        case .manageAgents: "manage-agents"
+        }
+    }
+}
+
+/// A running command waiting for confirmation before it is deleted.
+private struct CommandDeletion {
+    let item: SidebarItem
+    let section: ProjectSection
 }
 
 /// An action that ends an agent's or terminal's process, waiting for confirmation while it runs.

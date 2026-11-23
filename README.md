@@ -16,36 +16,22 @@ Produces `build/Mothership.app`.
 
     swift test
 
-## Config
+## Projects and data
 
-Projects are defined in `~/.config/mothership/projects.yml`. If the file is missing, the app creates it with a commented example. Edit it in any editor and reload.
+Projects are added in the app. Everything (projects, commands, the saved agent list) lives in `~/Library/Application Support/Mothership/projects.json`, which the app manages for you. If that file can't be read, the app keeps it as `projects.json.unreadable-<timestamp>` and starts fresh.
 
-Format (the same example the app writes, commented out, into a new file):
-
-    projects:
-      - name: Acme
-        path: ~/Code/acme
-        commands:
-          - name: Vite
-            run: npm run dev
-            autostart: true
-          - name: Queue
-            run: php artisan queue:work
-        agents:
-          - name: Claude
-            run: claude
-          - name: Codex
-            run: codex
-
-Commands with `autostart: true` start when the app launches. Agents are templates: each "+" next to Agents starts a new session from one.
+- **Add Project** (⌘O, or the button at the bottom of the sidebar): pick a folder. Its name becomes the project name.
+- **Project menu** (right-click a project name): Rename, Change Folder, Remove. Removing stops the project's sessions and never touches the folder on disk.
+- **Agents `+`**: starts an agent from the saved list. **Custom…** runs a one-off command, and can save it to the list. **Manage List…** removes saved agents.
+- **Commands `+`**: add a command (name, command, and whether to start it automatically when Mothership opens). Right-click a command for Start, Stop, Restart, Edit… and Delete…. A changed command applies on the next Start or Restart.
 
 ## Shortcuts
 
 | Shortcut | Action |
 | --- | --- |
 | ⌘1 … ⌘9 | Select the first item of the Nth project and expand it |
+| ⌘O | Add Project |
 | ⌘T | New terminal in the selected item's project (the first project if nothing is selected) |
-| ⌘, | Open Config (File menu) |
 | ⌘Q | Quit, leaving every session running |
 | ⌥⌘Q | Stop All and Quit: asks to confirm, then ends the tmux server and every session |
 
@@ -57,8 +43,8 @@ Sessions live on a private tmux server (socket `mothership`) that uses an app-ow
 
 ## Launch overrides
 
-Pass these as launch arguments, e.g. `open build/Mothership.app --args -configPath /tmp/x.yml -tmuxSocket ms-dev`:
+Pass these as launch arguments, e.g. `open build/Mothership.app --args -dataPath /tmp/x.json -tmuxSocket ms-dev`:
 
-- `-configPath <file>`: use this projects.yml instead of the default.
+- `-dataPath <file>`: use this projects.json instead of the default.
 - `-tmuxSocket <name>`: use this tmux socket name instead of `mothership`.
 - `-forceTmuxMissing YES`: pretend tmux is not installed, to see the missing-tmux screen.
