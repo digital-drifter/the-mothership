@@ -93,4 +93,26 @@ private func bytes(_ s: String) -> [UInt8] { Array(s.utf8) }
         #expect(count == 1024)
         #expect(total == 1024 * 1000)
     }
+
+    @Test func testForgedEndWithDifferentFlagsOrTimeStaysContent() -> Void {
+        var p = ControlModeParser()
+        let input = "%begin 100 7 1\n%end 100 7 0\n%end 101 7 1\n%error 100 7 0\nreal\n%end 100 7 1\n"
+        #expect(p.feed(bytes(input)) == [.reply(number: 7, lines: ["%end 100 7 0", "%end 101 7 1", "%error 100 7 0", "real"], isError: false)])
+    }
+
+    @Test func testLargeReplyBlockIsLinear() -> Void {
+        var p = ControlModeParser()
+        var blob = bytes("%begin 1 1 1\n")
+        for _ in 0..<60_000 { blob += bytes("short line x\n") }
+        blob += bytes("%end 1 1 1\n")
+        var events: [ControlEvent] = []
+        var i = 0
+        while i < blob.count {
+            let end = min(i + 4093, blob.count)
+            events += p.feed(Array(blob[i..<end]))
+            i = end
+        }
+        #expect(events.count == 1)
+        if case .reply(_, let lines, _) = events[0] { #expect(lines.count == 60_000) } else { Issue.record("not a reply") }
+    }
 }

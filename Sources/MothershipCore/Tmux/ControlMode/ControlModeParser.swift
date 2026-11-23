@@ -18,6 +18,8 @@ public struct ControlModeParser: Sendable {
 
     private struct Block: Sendable {
         var number: Int
+        var time: String
+        var flags: String
         var lines: [String] = []
     }
 
@@ -84,14 +86,16 @@ public struct ControlModeParser: Sendable {
     private static func isOctal(_ b: UInt8) -> Bool { b >= 0x30 && b <= 0x37 }
 
     private mutating func handle(line raw: ArraySlice<UInt8>) -> ControlEvent? {
-        if var current = block {
+        if block != nil {
+            let current = (number: block!.number, time: block!.time, flags: block!.flags)
             let trimmed = Self.strippingCR(raw)
-            if let end = Self.blockEnd(trimmed), end.number == current.number {
+            if let end = Self.blockEnd(trimmed), end.number == current.number,
+               end.time == current.time, end.flags == current.flags {
+                let lines = block!.lines
                 block = nil
-                return .reply(number: current.number, lines: current.lines, isError: end.isError)
+                return .reply(number: current.number, lines: lines, isError: end.isError)
             }
-            current.lines.append(String(decoding: raw, as: UTF8.self))
-            block = current
+            block!.lines.append(String(decoding: raw, as: UTF8.self))
             return nil
         }
         guard raw.first == Self.percent else {
@@ -100,8 +104,8 @@ public struct ControlModeParser: Sendable {
         }
         if let output = Self.parseOutput(raw) { return output }
         let line = String(decoding: Self.strippingCR(raw), as: UTF8.self)
-        if line.hasPrefix("%begin "), let number = Self.number(in: line) {
-            block = Block(number: number)
+        if line.hasPrefix("%begin "), let begin = Self.beginFields(in: line) {
+            block = Block(number: begin.number, time: begin.time, flags: begin.flags)
             return nil
         }
         if line == "%exit" { return .exit(reason: nil) }
@@ -142,16 +146,17 @@ public struct ControlModeParser: Sendable {
         String(decoding: line, as: UTF8.self).split(separator: " ", omittingEmptySubsequences: true)
     }
 
-    /// `%begin <time> <number> <flags>` → number
-    private static func number(in line: String) -> Int? {
+    /// `%begin <time> <number> <flags>`
+    private static func beginFields(in line: String) -> (time: String, number: Int, flags: String)? {
         let parts = line.split(separator: " ")
-        return parts.count >= 3 ? Int(parts[2]) : nil
+        guard parts.count >= 4, let n = Int(parts[2]) else { return nil }
+        return (String(parts[1]), n, String(parts[3]))
     }
 
-    private static func blockEnd(_ line: ArraySlice<UInt8>) -> (number: Int, isError: Bool)? {
+    private static func blockEnd(_ line: ArraySlice<UInt8>) -> (time: String, number: Int, flags: String, isError: Bool)? {
         guard line.first == percent else { return nil }
         let parts = fields(line)
-        guard parts.count >= 3, parts[0] == "%end" || parts[0] == "%error", let n = Int(parts[2]) else { return nil }
-        return (n, parts[0] == "%error")
+        guard parts.count >= 4, parts[0] == "%end" || parts[0] == "%error", let n = Int(parts[2]) else { return nil }
+        return (String(parts[1]), n, String(parts[3]), parts[0] == "%error")
     }
 }
