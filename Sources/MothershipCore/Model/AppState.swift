@@ -306,3 +306,197 @@ public final class AppState {
         sections = SidebarBuilder.build(config: config, panes: panes)
     }
 }
+
+// MARK: - Editing projects, commands and agents
+
+extension AppState {
+    /// Adds the folder as a project, or returns the slug of the project already using it.
+    /// Returns nil when the config could not be saved.
+    @discardableResult
+    public func addProject(path: String) -> String? {
+        let standardized = Self.standardized(path)
+        if let existing = config.projects.first(where: { $0.path == standardized }) { return existing.slug }
+        let name = DisplayName.clean(URL(fileURLWithPath: standardized).lastPathComponent)
+        let slug = Slug.unique(name, fallback: "project", taken: Set(config.projects.map(\.slug)))
+        let added = commit { $0.projects.append(ProjectConfig(slug: slug, name: name, path: standardized, commands: [])) }
+        return added ? slug : nil
+    }
+
+    public func renameProject(slug: String, to name: String) -> Void {
+        let cleaned = Self.trimmed(name)
+        guard !cleaned.isEmpty else { return }
+        commit { config in
+            guard let index = config.projects.firstIndex(where: { $0.slug == slug }) else { return }
+            config.projects[index].name = cleaned
+        }
+    }
+
+    public func changeFolder(projectSlug: String, to path: String) -> Void {
+        let standardized = Self.standardized(path)
+        commit { config in
+            guard let index = config.projects.firstIndex(where: { $0.slug == projectSlug }) else { return }
+            config.projects[index].path = standardized
+        }
+    }
+
+    /// Live sessions of the project, for the confirmation before removing it.
+    public func runningSessionCount(projectSlug: String) -> Int {
+        panes.filter { $0.project == projectSlug && !$0.isDead }.count
+    }
+
+    /// Forgets the project, then kills all of its sessions.
+    public func removeProject(slug: String) async -> Void {
+        guard commit({ $0.projects.removeAll { $0.slug == slug } }) else { return }
+        do {
+            for pane in try await tmux.listPanes() where pane.project == slug {
+                try await tmux.killSession(pane.sessionName)
+            }
+        } catch {
+            report(error)
+        }
+        await refresh()
+    }
+
+    /// The message to show next to the form, or nil when the command can be saved.
+    public func validateCommand(projectSlug: String, name: String, run: String, editing commandSlug: String?) -> String? {
+        let cleaned = Self.trimmed(name)
+        if cleaned.isEmpty { return "Name can't be empty." }
+        let others = config.projects.first { $0.slug == projectSlug }?.commands.filter { $0.slug != commandSlug } ?? []
+        if others.contains(where: { $0.name.localizedCaseInsensitiveCompare(cleaned) == .orderedSame }) {
+            return "A command named \u{201C}\(cleaned)\u{201D} already exists in this project."
+        }
+        if run.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "Command can't be empty." }
+        return nil
+    }
+
+    /// Saves the command and starts it. Returns its session name.
+    @discardableResult
+    public func addCommand(projectSlug: String, name: String, run: String, autostart: Bool) async -> String? {
+        if let problem = validateCommand(projectSlug: projectSlug, name: name, run: run, editing: nil) {
+            actionError = problem
+            return nil
+        }
+        guard let project = config.projects.first(where: { $0.slug == projectSlug }) else {
+            actionError = "Unknown project: \(projectSlug)"
+            return nil
+        }
+        let cleaned = Self.trimmed(name)
+        let slug = Slug.unique(cleaned, fallback: "command", taken: Set(project.commands.map(\.slug)))
+        let command = CommandConfig(
+            slug: slug, name: cleaned, run: run.trimmingCharacters(in: .whitespacesAndNewlines), autostart: autostart)
+        guard commit({ config in
+            guard let index = config.projects.firstIndex(where: { $0.slug == projectSlug }) else { return }
+            config.projects[index].commands.append(command)
+        }) else { return nil }
+        await start(commandSlug: slug, projectSlug: projectSlug)
+        return SessionName.make(projectSlug: projectSlug, kind: .command, id: slug)
+    }
+
+    /// Saves the changes. A running session picks up the new name at once; a new run line applies on the next start.
+    public func editCommand(projectSlug: String, commandSlug: String, name: String, run: String, autostart: Bool) async -> Void {
+        if let problem = validateCommand(projectSlug: projectSlug, name: name, run: run, editing: commandSlug) {
+            actionError = problem
+            return
+        }
+        let cleaned = Self.trimmed(name)
+        let trimmedRun = run.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard commit({ config in
+            guard let index = config.projects.firstIndex(where: { $0.slug == projectSlug }),
+                  let at = config.projects[index].commands.firstIndex(where: { $0.slug == commandSlug })
+            else { return }
+            config.projects[index].commands[at] = CommandConfig(
+                slug: commandSlug, name: cleaned, run: trimmedRun, autostart: autostart)
+        }) else { return }
+        let session = SessionName.make(projectSlug: projectSlug, kind: .command, id: commandSlug)
+        if panes.contains(where: { $0.sessionName == session }) {
+            do {
+                try await tmux.setName(session: session, name: cleaned)
+            } catch {
+                report(error)
+            }
+        }
+        await refresh()
+    }
+
+    /// Forgets the command and kills its session if it has one.
+    public func deleteCommand(projectSlug: String, commandSlug: String) async -> Void {
+        guard commit({ config in
+            guard let index = config.projects.firstIndex(where: { $0.slug == projectSlug }) else { return }
+            config.projects[index].commands.removeAll { $0.slug == commandSlug }
+        }) else { return }
+        let session = SessionName.make(projectSlug: projectSlug, kind: .command, id: commandSlug)
+        do {
+            if try await tmux.listPanes().contains(where: { $0.sessionName == session }) {
+                try await tmux.killSession(session)
+            }
+        } catch {
+            report(error)
+        }
+        await refresh()
+    }
+
+    public func validateAgentTemplate(name: String, run: String) -> String? {
+        let cleaned = Self.trimmed(name)
+        if cleaned.isEmpty { return "Name can't be empty." }
+        if config.agents.contains(where: { $0.name.localizedCaseInsensitiveCompare(cleaned) == .orderedSame }) {
+            return "An agent named \u{201C}\(cleaned)\u{201D} is already in the list."
+        }
+        if run.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "Command can't be empty." }
+        return nil
+    }
+
+    public func addAgentTemplate(name: String, run: String) -> Void {
+        if let problem = validateAgentTemplate(name: name, run: run) {
+            actionError = problem
+            return
+        }
+        let template = AgentTemplate(name: Self.trimmed(name), run: run.trimmingCharacters(in: .whitespacesAndNewlines))
+        commit { $0.agents.append(template) }
+    }
+
+    public func removeAgentTemplate(name: String) -> Void {
+        commit { $0.agents.removeAll { $0.name.localizedCaseInsensitiveCompare(name) == .orderedSame } }
+    }
+
+    /// Starts an agent from a one-off command, without adding it to the list. Returns its session name.
+    @discardableResult
+    public func newCustomAgent(projectSlug: String, name: String, run: String) async -> String? {
+        let cleaned = Self.trimmed(name)
+        let command = run.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty, !command.isEmpty else {
+            actionError = cleaned.isEmpty ? "Name can't be empty." : "Command can't be empty."
+            return nil
+        }
+        return await create(projectSlug: projectSlug, kind: .agent, prefix: cleaned, template: cleaned, run: command)
+    }
+
+    // MARK: - Helpers
+
+    /// Applies `change` to a copy of the config and saves it; the shown config only changes once the save worked.
+    @discardableResult
+    private func commit(_ change: (inout MothershipConfig) -> Void) -> Bool {
+        guard canSave else {
+            actionError = "Changes can't be saved until the unreadable projects.json is fixed or removed."
+            return false
+        }
+        var copy = config
+        change(&copy)
+        do {
+            try store.save(copy)
+        } catch {
+            actionError = "Couldn't save projects.json: \(error.localizedDescription)"
+            return false
+        }
+        config = copy
+        rebuildSections()
+        return true
+    }
+
+    private static func standardized(_ path: String) -> String {
+        URL(fileURLWithPath: path).standardizedFileURL.path
+    }
+
+    private static func trimmed(_ name: String) -> String {
+        DisplayName.clean(name).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}

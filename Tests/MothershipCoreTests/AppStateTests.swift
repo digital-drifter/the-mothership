@@ -2,50 +2,6 @@ import Foundation
 import Testing
 @testable import MothershipCore
 
-private let validConfig = MothershipConfig(
-    version: 1,
-    agents: [AgentTemplate(name: "Claude", run: "claude")],
-    projects: [
-        ProjectConfig(
-            slug: "es", name: "ES", path: "/Users/test/Code/es",
-            commands: [
-                CommandConfig(slug: "vite", name: "Vite", run: "npm run dev", autostart: true),
-                CommandConfig(slug: "queue", name: "Queue", run: "php artisan queue:work", autostart: false),
-            ])
-    ])
-
-private final class Signals: @unchecked Sendable {
-    private let lock = NSLock()
-    private var pids: [Int32] = []
-    func add(_ pid: Int32) -> Void { lock.lock(); pids.append(pid); lock.unlock() }
-    var all: [Int32] { lock.lock(); defer { lock.unlock() }; return pids }
-}
-
-private func pane(
-    _ session: String, pid: Int32 = 100, dead: Bool = false, kind: ItemKind, name: String, template: String = "", created: Int = 1
-) -> PaneInfo {
-    PaneInfo(
-        sessionName: session, paneID: "%1", pid: dead ? 0 : pid, created: created, isDead: dead,
-        deadStatus: dead ? 1 : nil, project: "es", kind: kind, name: name, template: template)
-}
-
-/// A state backed by a temp store holding `config`; loaded unless `load` is false.
-@MainActor
-private func makeState(
-    config: MothershipConfig = validConfig, load: Bool = true, tmux: FakeTmux, signals: Signals = Signals(),
-    folderOK: Bool = true
-) throws -> (AppState, ProjectStore) {
-    let store = ProjectStore(url: FileManager.default.temporaryDirectory
-        .appendingPathComponent("ms-\(UUID().uuidString)/projects.json"))
-    try store.save(config)
-    let state = AppState(
-        tmux: tmux, store: store, shell: "/bin/zsh",
-        stopGracePeriod: .milliseconds(10), signalProcessGroup: { signals.add($0) },
-        directoryExists: { _ in folderOK })
-    if load { state.load() }
-    return (state, store)
-}
-
 @Suite @MainActor struct AppStateTests {
     @Test func testLoadOfAnUnreadableFileShowsTheWarningAndNoProjects() throws -> Void {
         let (state, store) = try makeState(load: false, tmux: FakeTmux())
@@ -74,7 +30,7 @@ private func makeState(
     }
 
     @Test func testStartDeadCommandRespawns() async throws -> Void {
-        let fake = FakeTmux(panes: [pane("ms-es-cmd-vite", dead: true, kind: .command, name: "Vite")])
+        let fake = FakeTmux(panes: [makePane("ms-es-cmd-vite", dead: true, kind: .command, name: "Vite")])
         let (state, _) = try makeState(tmux: fake)
         await state.refresh()
         await state.start(commandSlug: "vite", projectSlug: "es")
@@ -88,8 +44,8 @@ private func makeState(
     @Test func testRefreshReportsRespawnedSessions() async throws -> Void {
         let fake = FakeTmux()
         await fake.script([
-            [pane("ms-es-cmd-vite", pid: 10, kind: .command, name: "Vite")],
-            [pane("ms-es-cmd-vite", pid: 11, kind: .command, name: "Vite")],
+            [makePane("ms-es-cmd-vite", pid: 10, kind: .command, name: "Vite")],
+            [makePane("ms-es-cmd-vite", pid: 11, kind: .command, name: "Vite")],
         ])
         let (state, _) = try makeState(tmux: fake)
         var reported: [Set<String>] = []
@@ -108,7 +64,7 @@ private func makeState(
     }
 
     @Test func testStopSignalsProcessGroupWhenPaneOutlivesGrace() async throws -> Void {
-        let live = pane("ms-es-cmd-vite", pid: 4242, kind: .command, name: "Vite")
+        let live = makePane("ms-es-cmd-vite", pid: 4242, kind: .command, name: "Vite")
         let fake = FakeTmux(panes: [live])
         let signals = Signals()
         let (state, _) = try makeState(tmux: fake, signals: signals)
@@ -119,8 +75,8 @@ private func makeState(
     }
 
     @Test func testStopDoesNotSignalWhenPaneDiesInTime() async throws -> Void {
-        let live = pane("ms-es-cmd-vite", pid: 4242, kind: .command, name: "Vite")
-        let dead = pane("ms-es-cmd-vite", dead: true, kind: .command, name: "Vite")
+        let live = makePane("ms-es-cmd-vite", pid: 4242, kind: .command, name: "Vite")
+        let dead = makePane("ms-es-cmd-vite", dead: true, kind: .command, name: "Vite")
         let fake = FakeTmux()
         await fake.script([[live], [live], [dead]])
         let signals = Signals()
@@ -131,8 +87,8 @@ private func makeState(
     }
 
     @Test func testStopDoesNotSignalACommandRestartedDuringGrace() async throws -> Void {
-        let live = pane("ms-es-cmd-vite", pid: 4242, kind: .command, name: "Vite")
-        let restarted = pane("ms-es-cmd-vite", pid: 5555, kind: .command, name: "Vite")
+        let live = makePane("ms-es-cmd-vite", pid: 4242, kind: .command, name: "Vite")
+        let restarted = makePane("ms-es-cmd-vite", pid: 5555, kind: .command, name: "Vite")
         let fake = FakeTmux()
         await fake.script([[live], [live], [restarted]])
         let signals = Signals()
@@ -144,8 +100,8 @@ private func makeState(
 
     @Test func testNewTerminalNumbersAfterHighestExisting() async throws -> Void {
         let fake = FakeTmux(panes: [
-            pane("ms-es-term-aaaaaa", kind: .terminal, name: "Terminal 1", created: 1),
-            pane("ms-es-term-bbbbbb", kind: .terminal, name: "Terminal 3", created: 2),
+            makePane("ms-es-term-aaaaaa", kind: .terminal, name: "Terminal 1", created: 1),
+            makePane("ms-es-term-bbbbbb", kind: .terminal, name: "Terminal 3", created: 2),
         ])
         let (state, _) = try makeState(tmux: fake)
         await state.refresh()
@@ -181,7 +137,7 @@ private func makeState(
     }
 
     @Test func testRunAutostartRespawnsADeadCommandWithItsCurrentConfig() async throws -> Void {
-        let fake = FakeTmux(panes: [pane("ms-es-cmd-vite", dead: true, kind: .command, name: "Vite")])
+        let fake = FakeTmux(panes: [makePane("ms-es-cmd-vite", dead: true, kind: .command, name: "Vite")])
         let (state, _) = try makeState(tmux: fake)
         await state.runAutostart()
         let calls = await fake.calls
@@ -209,8 +165,8 @@ private func makeState(
 
     @Test func testRestartAndRelaunchRespawnAndRefresh() async throws -> Void {
         let fake = FakeTmux(panes: [
-            pane("ms-es-cmd-vite", kind: .command, name: "Vite"),
-            pane("ms-es-agent-aaaaaa", kind: .agent, name: "Claude 1", template: "Claude"),
+            makePane("ms-es-cmd-vite", kind: .command, name: "Vite"),
+            makePane("ms-es-agent-aaaaaa", kind: .agent, name: "Claude 1", template: "Claude"),
         ])
         let (state, _) = try makeState(tmux: fake)
         await state.refresh()
@@ -225,7 +181,7 @@ private func makeState(
     }
 
     @Test func testStartAndRestartUseTheEditedRunAndPath() async throws -> Void {
-        let fake = FakeTmux(panes: [pane("ms-es-cmd-vite", dead: true, kind: .command, name: "Vite")])
+        let fake = FakeTmux(panes: [makePane("ms-es-cmd-vite", dead: true, kind: .command, name: "Vite")])
         let (state, store) = try makeState(tmux: fake)
         await state.refresh()
         var edited = validConfig
@@ -244,7 +200,7 @@ private func makeState(
     }
 
     @Test func testRestartOfOrphanCommandReusesItsOriginalCommand() async throws -> Void {
-        let fake = FakeTmux(panes: [pane("ms-es-cmd-old", kind: .command, name: "Old")])
+        let fake = FakeTmux(panes: [makePane("ms-es-cmd-old", kind: .command, name: "Old")])
         let (state, _) = try makeState(tmux: fake)
         await state.refresh()
         await state.restart(sessionName: "ms-es-cmd-old")
@@ -252,7 +208,7 @@ private func makeState(
     }
 
     @Test func testRestartAndRelaunchInMissingFolderRunNothing() async throws -> Void {
-        let fake = FakeTmux(panes: [pane("ms-es-cmd-vite", kind: .command, name: "Vite")])
+        let fake = FakeTmux(panes: [makePane("ms-es-cmd-vite", kind: .command, name: "Vite")])
         let (state, _) = try makeState(tmux: fake, folderOK: false)
         await state.refresh()
         let before = await fake.calls.count
@@ -265,7 +221,7 @@ private func makeState(
     }
 
     @Test func testStartOnRunningCommandDoesNotRespawn() async throws -> Void {
-        let fake = FakeTmux(panes: [pane("ms-es-cmd-vite", kind: .command, name: "Vite")])
+        let fake = FakeTmux(panes: [makePane("ms-es-cmd-vite", kind: .command, name: "Vite")])
         let (state, _) = try makeState(tmux: fake)
         await state.refresh()
         await state.start(commandSlug: "vite", projectSlug: "es")
@@ -288,7 +244,7 @@ private func makeState(
     }
 
     @Test func testCloseKillsSessionAndRefreshes() async throws -> Void {
-        let fake = FakeTmux(panes: [pane("ms-es-term-aaaaaa", kind: .terminal, name: "Terminal 1")])
+        let fake = FakeTmux(panes: [makePane("ms-es-term-aaaaaa", kind: .terminal, name: "Terminal 1")])
         let (state, _) = try makeState(tmux: fake)
         await state.refresh()
         await state.close(sessionName: "ms-es-term-aaaaaa")
@@ -298,7 +254,7 @@ private func makeState(
     }
 
     @Test func testRenameSetsNameAndRefreshes() async throws -> Void {
-        let fake = FakeTmux(panes: [pane("ms-es-term-aaaaaa", kind: .terminal, name: "Terminal 1")])
+        let fake = FakeTmux(panes: [makePane("ms-es-term-aaaaaa", kind: .terminal, name: "Terminal 1")])
         let (state, _) = try makeState(tmux: fake)
         await state.refresh()
         await state.rename(sessionName: "ms-es-term-aaaaaa", to: "Logs")
@@ -308,7 +264,7 @@ private func makeState(
     }
 
     @Test func testRenameReplacesControlCharactersWithSpaces() async throws -> Void {
-        let fake = FakeTmux(panes: [pane("ms-es-term-aaaaaa", kind: .terminal, name: "Terminal 1")])
+        let fake = FakeTmux(panes: [makePane("ms-es-term-aaaaaa", kind: .terminal, name: "Terminal 1")])
         let (state, _) = try makeState(tmux: fake)
         await state.refresh()
         await state.rename(sessionName: "ms-es-term-aaaaaa", to: "Lo\tgs\r\nnow")
@@ -316,14 +272,14 @@ private func makeState(
     }
 
     @Test func testRefreshKillsOnlyDeadCommandsMissingFromConfig() async throws -> Void {
-        var otherProject = pane("ms-gone-cmd-web", dead: true, kind: .command, name: "Web")
+        var otherProject = makePane("ms-gone-cmd-web", dead: true, kind: .command, name: "Web")
         otherProject.project = "gone"
         let fake = FakeTmux(panes: [
-            pane("ms-es-cmd-old", dead: true, kind: .command, name: "Old"),
+            makePane("ms-es-cmd-old", dead: true, kind: .command, name: "Old"),
             otherProject,
-            pane("ms-es-cmd-live", kind: .command, name: "Live"),
-            pane("ms-es-cmd-vite", dead: true, kind: .command, name: "Vite"),
-            pane("ms-es-agent-aaaaaa", dead: true, kind: .agent, name: "Claude 1", template: "Claude"),
+            makePane("ms-es-cmd-live", kind: .command, name: "Live"),
+            makePane("ms-es-cmd-vite", dead: true, kind: .command, name: "Vite"),
+            makePane("ms-es-agent-aaaaaa", dead: true, kind: .agent, name: "Claude 1", template: "Claude"),
         ])
         let (state, _) = try makeState(tmux: fake)
         await state.refresh()
@@ -335,7 +291,7 @@ private func makeState(
     }
 
     @Test func testRefreshKillsNothingBeforeAConfigHasLoaded() async throws -> Void {
-        let fake = FakeTmux(panes: [pane("ms-es-cmd-vite", dead: true, kind: .command, name: "Vite")])
+        let fake = FakeTmux(panes: [makePane("ms-es-cmd-vite", dead: true, kind: .command, name: "Vite")])
         let (state, _) = try makeState(load: false, tmux: fake)
         await state.refresh()
         #expect(!(await fake.calls.contains { $0.first == "kill-session" }))
@@ -348,7 +304,7 @@ private func makeState(
         await fake.holdNextListPanes()
         let loop = Task { await state.refresh() }
         while await fake.heldCount == 0 { await Task.yield() }
-        await fake.script([[pane("ms-es-term-aaaaaa", kind: .terminal, name: "Terminal 1")]])
+        await fake.script([[makePane("ms-es-term-aaaaaa", kind: .terminal, name: "Terminal 1")]])
         await state.refresh()
         await fake.releaseHeld()
         await loop.value
