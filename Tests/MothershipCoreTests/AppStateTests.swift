@@ -47,7 +47,7 @@ private func makeState(
 }
 
 @Suite @MainActor struct AppStateTests {
-    @Test func testReloadKeepsLastGoodConfigOnParseError() throws {
+    @Test func testReloadKeepsLastGoodConfigOnParseError() throws -> Void {
         let (state, url) = try makeState(tmux: FakeTmux())
         let before = state.sections
         #expect(before.count == 1)
@@ -60,12 +60,12 @@ private func makeState(
         #expect(state.configError == nil)
     }
 
-    @Test func testReloadExposesParsedConfigForDisplay() throws {
+    @Test func testReloadExposesParsedConfigForDisplay() throws -> Void {
         let (state, _) = try makeState(tmux: FakeTmux())
         #expect(state.config.projects.first?.commands.map(\.run) == ["npm run dev", "php artisan queue:work"])
     }
 
-    @Test func testReloadWithDeletedFileSetsError() throws {
+    @Test func testReloadWithDeletedFileSetsError() throws -> Void {
         let (state, url) = try makeState(tmux: FakeTmux())
         try FileManager.default.removeItem(at: url)
         state.reloadConfig()
@@ -73,7 +73,7 @@ private func makeState(
         #expect(state.sections.count == 1)
     }
 
-    @Test func testStartNewCommandCallsNewSessionWithShellArgv() async throws {
+    @Test func testStartNewCommandCallsNewSessionWithShellArgv() async throws -> Void {
         let fake = FakeTmux()
         let (state, _) = try makeState(tmux: fake)
         await state.start(commandSlug: "vite", projectSlug: "es")
@@ -90,7 +90,7 @@ private func makeState(
         #expect(state.actionError == nil)
     }
 
-    @Test func testStartDeadCommandRespawns() async throws {
+    @Test func testStartDeadCommandRespawns() async throws -> Void {
         let fake = FakeTmux(panes: [pane("ms-es-cmd-vite", dead: true, kind: .command, name: "Vite")])
         let (state, _) = try makeState(tmux: fake)
         await state.refresh()
@@ -116,7 +116,7 @@ private func makeState(
         #expect(reported == [["ms-es-cmd-vite"]])
     }
 
-    @Test func testStartInMissingFolderSetsErrorAndRunsNothing() async throws {
+    @Test func testStartInMissingFolderSetsErrorAndRunsNothing() async throws -> Void {
         let fake = FakeTmux()
         let (state, _) = try makeState(tmux: fake, folderOK: false)
         await state.start(commandSlug: "vite", projectSlug: "es")
@@ -124,7 +124,7 @@ private func makeState(
         #expect(await fake.calls.isEmpty)
     }
 
-    @Test func testStopSignalsProcessGroupWhenPaneOutlivesGrace() async throws {
+    @Test func testStopSignalsProcessGroupWhenPaneOutlivesGrace() async throws -> Void {
         let live = pane("ms-es-cmd-vite", pid: 4242, kind: .command, name: "Vite")
         let fake = FakeTmux(panes: [live])
         let signals = Signals()
@@ -135,7 +135,7 @@ private func makeState(
         #expect(await fake.calls.contains(["send-keys", "-t", "ms-es-cmd-vite", "C-c"]))
     }
 
-    @Test func testStopDoesNotSignalWhenPaneDiesInTime() async throws {
+    @Test func testStopDoesNotSignalWhenPaneDiesInTime() async throws -> Void {
         let live = pane("ms-es-cmd-vite", pid: 4242, kind: .command, name: "Vite")
         let dead = pane("ms-es-cmd-vite", dead: true, kind: .command, name: "Vite")
         let fake = FakeTmux()
@@ -159,7 +159,7 @@ private func makeState(
         #expect(signals.all.isEmpty)
     }
 
-    @Test func testNewTerminalNumbersAfterHighestExisting() async throws {
+    @Test func testNewTerminalNumbersAfterHighestExisting() async throws -> Void {
         let fake = FakeTmux(panes: [
             pane("ms-es-term-aaaaaa", kind: .terminal, name: "Terminal 1", created: 1),
             pane("ms-es-term-bbbbbb", kind: .terminal, name: "Terminal 3", created: 2),
@@ -174,7 +174,7 @@ private func makeState(
         #expect(Array(create[s...].prefix(2)) == ["/bin/zsh", "-l"])
     }
 
-    @Test func testNewAgentUsesTemplateRunAndName() async throws {
+    @Test func testNewAgentUsesTemplateRunAndName() async throws -> Void {
         let fake = FakeTmux()
         let (state, _) = try makeState(tmux: fake)
         let session = try #require(await state.newAgent(projectSlug: "es", templateName: "Claude"))
@@ -188,7 +188,7 @@ private func makeState(
         #expect(create[t + 1] == "Claude")
     }
 
-    @Test func testRunAutostartStartsOnlyPlannedCommands() async throws {
+    @Test func testRunAutostartStartsOnlyPlannedCommands() async throws -> Void {
         let fake = FakeTmux()
         let (state, _) = try makeState(tmux: fake)
         await state.runAutostart()
@@ -208,7 +208,7 @@ private func makeState(
         #expect(!calls.contains { $0.first == "new-session" })
     }
 
-    @Test func testUnknownSessionSetsActionError() async throws {
+    @Test func testUnknownSessionSetsActionError() async throws -> Void {
         let fake = FakeTmux()
         let (state, _) = try makeState(tmux: fake)
         await state.close(sessionName: "ms-es-term-zzzzzz")
@@ -216,7 +216,7 @@ private func makeState(
         #expect(await fake.calls.isEmpty)
     }
 
-    @Test func testTmuxFailureSurfacesAsActionError() async throws {
+    @Test func testTmuxFailureSurfacesAsActionError() async throws -> Void {
         let fake = FakeTmux()
         await fake.failAll(with: TmuxError(message: "boom", exitCode: 1))
         let (state, _) = try makeState(tmux: fake)
@@ -224,7 +224,7 @@ private func makeState(
         #expect(state.actionError == "boom")
     }
 
-    @Test func testRestartAndRelaunchRespawnAndRefresh() async throws {
+    @Test func testRestartAndRelaunchRespawnAndRefresh() async throws -> Void {
         let fake = FakeTmux(panes: [
             pane("ms-es-cmd-vite", kind: .command, name: "Vite"),
             pane("ms-es-agent-aaaaaa", kind: .agent, name: "Claude 1", template: "Claude"),
@@ -268,7 +268,7 @@ private func makeState(
         #expect(await fake.calls.contains(["respawn-pane", "-k", "-t", "ms-es-cmd-old"]))
     }
 
-    @Test func testRestartAndRelaunchInMissingFolderRunNothing() async throws {
+    @Test func testRestartAndRelaunchInMissingFolderRunNothing() async throws -> Void {
         let fake = FakeTmux(panes: [pane("ms-es-cmd-vite", kind: .command, name: "Vite")])
         let (state, _) = try makeState(tmux: fake, folderOK: false)
         await state.refresh()
@@ -281,7 +281,7 @@ private func makeState(
         #expect(await fake.calls.count == before)
     }
 
-    @Test func testStartOnRunningCommandDoesNotRespawn() async throws {
+    @Test func testStartOnRunningCommandDoesNotRespawn() async throws -> Void {
         let fake = FakeTmux(panes: [pane("ms-es-cmd-vite", kind: .command, name: "Vite")])
         let (state, _) = try makeState(tmux: fake)
         await state.refresh()
@@ -291,7 +291,7 @@ private func makeState(
         #expect(calls.last?.first == "list-panes")
     }
 
-    @Test func testConcurrentNewTerminalsGetDistinctNames() async throws {
+    @Test func testConcurrentNewTerminalsGetDistinctNames() async throws -> Void {
         let fake = FakeTmux()
         let (state, _) = try makeState(tmux: fake)
         async let a = state.newTerminal(projectSlug: "es")
@@ -304,7 +304,7 @@ private func makeState(
         #expect(Set(names) == ["Terminal 1", "Terminal 2"])
     }
 
-    @Test func testCloseKillsSessionAndRefreshes() async throws {
+    @Test func testCloseKillsSessionAndRefreshes() async throws -> Void {
         let fake = FakeTmux(panes: [pane("ms-es-term-aaaaaa", kind: .terminal, name: "Terminal 1")])
         let (state, _) = try makeState(tmux: fake)
         await state.refresh()
@@ -314,7 +314,7 @@ private func makeState(
         #expect(calls.last?.first == "list-panes")
     }
 
-    @Test func testRenameSetsNameAndRefreshes() async throws {
+    @Test func testRenameSetsNameAndRefreshes() async throws -> Void {
         let fake = FakeTmux(panes: [pane("ms-es-term-aaaaaa", kind: .terminal, name: "Terminal 1")])
         let (state, _) = try makeState(tmux: fake)
         await state.refresh()
@@ -324,7 +324,7 @@ private func makeState(
         #expect(calls.last?.first == "list-panes")
     }
 
-    @Test func testStopAllKillsServerAndRefreshes() async throws {
+    @Test func testStopAllKillsServerAndRefreshes() async throws -> Void {
         let fake = FakeTmux()
         let (state, _) = try makeState(tmux: fake)
         let stopped = await state.stopAll()
@@ -334,7 +334,7 @@ private func makeState(
         #expect(calls.last?.first == "list-panes")
     }
 
-    @Test func testStopAllReturnsFalseAndSetsActionErrorWhenKillServerFails() async throws {
+    @Test func testStopAllReturnsFalseAndSetsActionErrorWhenKillServerFails() async throws -> Void {
         let fake = FakeTmux()
         await fake.failAll(with: TmuxError(message: "boom", exitCode: 1))
         let (state, _) = try makeState(tmux: fake)
@@ -343,7 +343,7 @@ private func makeState(
         #expect(state.actionError == "boom")
     }
 
-    @Test func testNewTerminalAndAgentInMissingFolderRunNothing() async throws {
+    @Test func testNewTerminalAndAgentInMissingFolderRunNothing() async throws -> Void {
         let fake = FakeTmux()
         let (state, _) = try makeState(tmux: fake, folderOK: false)
         #expect(await state.newTerminal(projectSlug: "es") == nil)
@@ -354,7 +354,7 @@ private func makeState(
         #expect(await fake.calls.isEmpty)
     }
 
-    @Test func testNewAgentWithUnknownTemplateSetsError() async throws {
+    @Test func testNewAgentWithUnknownTemplateSetsError() async throws -> Void {
         let fake = FakeTmux()
         let (state, _) = try makeState(tmux: fake)
         #expect(await state.newAgent(projectSlug: "es", templateName: "Nope") == nil)
