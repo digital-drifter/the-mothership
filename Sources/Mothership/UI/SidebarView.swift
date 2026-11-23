@@ -8,7 +8,7 @@ struct SidebarView: View {
 
     @State private var renaming: SidebarItem?
     @State private var renameDraft = ""
-    @State private var closing: SidebarItem?
+    @State private var ending: Ending?
 
     var body: some View {
         List(selection: $navigation.selection) {
@@ -27,9 +27,10 @@ struct SidebarView: View {
             Button("Cancel", role: .cancel) {}
         }
         .confirmationDialog(
-            "Close \(closing?.displayName ?? "")?", isPresented: isPresented($closing), presenting: closing
-        ) { item in
-            Button("Close", role: .destructive) { close(item) }
+            "\(ending?.action.title ?? "") \(ending?.item.displayName ?? "")?", isPresented: isPresented($ending),
+            presenting: ending
+        ) { ending in
+            Button(ending.action.title, role: .destructive) { perform(ending) }
             Button("Cancel", role: .cancel) {}
         } message: { _ in
             Text("Its process is still running and will be ended.")
@@ -129,10 +130,8 @@ struct SidebarView: View {
             renameDraft = item.displayName
             renaming = item
         }
-        Button("Relaunch") { Task { await state.relaunch(sessionName: item.id) } }
-        Button("Close") {
-            if item.status == .running { closing = item } else { close(item) }
-        }
+        Button("Relaunch") { confirmIfRunning(Ending(item: item, action: .relaunch)) }
+        Button("Close") { confirmIfRunning(Ending(item: item, action: .close)) }
     }
 
     // MARK: - Actions and helpers
@@ -143,10 +142,21 @@ struct SidebarView: View {
         Task { await state.rename(sessionName: item.id, to: name) }
     }
 
-    private func close(_ item: SidebarItem) -> Void {
+    /// Ending a running process (Close, Relaunch) asks first; otherwise it happens right away.
+    private func confirmIfRunning(_ request: Ending) -> Void {
+        if request.item.status == .running { ending = request } else { perform(request) }
+    }
+
+    private func perform(_ request: Ending) -> Void {
+        let item = request.item
         Task {
-            await state.close(sessionName: item.id)
-            if navigation.selection == item.id { navigation.selection = nil }
+            switch request.action {
+            case .close:
+                await state.close(sessionName: item.id)
+                if navigation.selection == item.id { navigation.selection = nil }
+            case .relaunch:
+                await state.relaunch(sessionName: item.id)
+            }
         }
     }
 
@@ -156,9 +166,27 @@ struct SidebarView: View {
             set: { navigation.setExpanded($0, for: projectID) })
     }
 
-    private func isPresented(_ item: Binding<SidebarItem?>) -> Binding<Bool> {
+    private func isPresented<Value>(_ item: Binding<Value?>) -> Binding<Bool> {
         Binding(get: { item.wrappedValue != nil }, set: { if !$0 { item.wrappedValue = nil } })
     }
+}
+
+/// An action that ends an agent's or terminal's process, waiting for confirmation while it runs.
+private struct Ending {
+    enum Action {
+        case close
+        case relaunch
+
+        var title: String {
+            switch self {
+            case .close: "Close"
+            case .relaunch: "Relaunch"
+            }
+        }
+    }
+
+    let item: SidebarItem
+    let action: Action
 }
 
 /// An "AGENTS" / "COMMANDS" / "TERMINALS" sub-header with an optional `+` control.
