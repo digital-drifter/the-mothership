@@ -37,20 +37,29 @@ public struct TmuxClient: TmuxCommanding {
     public let tmuxPath: String
     public let configPath: String
     public let socketName: String
+    /// The environment tmux is started with (before `TmuxLocale` makes it UTF-8).
+    public let environment: [String: String]
 
-    public init(tmuxPath: String, configPath: String, socketName: String = "mothership") {
+    public init(
+        tmuxPath: String, configPath: String, socketName: String = "mothership",
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) {
         self.tmuxPath = tmuxPath
         self.configPath = configPath
         self.socketName = socketName
+        self.environment = environment
     }
 
     public func run(_ args: [String]) async throws -> String {
         let path = tmuxPath
-        let arguments = ["-L", socketName, "-f", configPath] + args
+        let environment = TmuxLocale.environment(from: environment)
+        // -u: tmux output must not depend on the locale the app happened to be launched with.
+        let arguments = ["-u", "-L", socketName, "-f", configPath] + args
         return try await withCheckedThrowingContinuation { continuation in
             let process = Process()
             process.executableURL = URL(fileURLWithPath: path)
             process.arguments = arguments
+            process.environment = environment
             let stdout = Pipe()
             let stderr = Pipe()
             process.standardOutput = stdout

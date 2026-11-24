@@ -72,7 +72,10 @@ public final class ControlClient: ControlChannel, @unchecked Sendable {
             guard process == nil else { return }
             let process = Process()
             process.executableURL = URL(fileURLWithPath: tmuxPath)
-            process.arguments = ["-L", socketName, "-f", configPath, "-C", "attach-session", "-t", SessionName.target(session)]
+            process.arguments = [
+                "-u", "-L", socketName, "-f", configPath, "-C", "attach-session", "-t", SessionName.target(session),
+            ]
+            process.environment = TmuxLocale.environment(from: ProcessInfo.processInfo.environment)
             let stdin = Pipe()
             let stdout = Pipe()
             process.standardInput = stdin
