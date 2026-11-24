@@ -19,6 +19,7 @@ struct MothershipApp: App {
                 .frame(minWidth: 720, minHeight: 420)
         }
         .commands { MothershipCommands(launcher: launcher, navigation: navigation) }
+        Settings { SettingsRoot(launcher: launcher) }
     }
 }
 

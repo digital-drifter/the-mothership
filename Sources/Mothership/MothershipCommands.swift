@@ -29,7 +29,6 @@ struct MothershipCommands: Commands {
     }
 
     var body: some Commands {
-        CommandGroup(replacing: .appSettings) {}
         CommandGroup(after: .newItem) {
             Button("Add Project…") { addProject() }
                 .keyboardShortcut("o", modifiers: .command)

@@ -20,11 +20,12 @@ The app icon is drawn in `Resources/AppIcon.svg`; after editing it, run `scripts
 
 ## Projects and data
 
-Projects are added in the app. Everything (projects, commands, the saved agent list) lives in `~/Library/Application Support/Mothership/projects.json`, which the app manages for you. If that file can't be read, the app keeps it as `projects.json.unreadable-<timestamp>` and starts fresh.
+Projects are added in the app. Everything (projects, commands, your settings) lives in `~/Library/Application Support/Mothership/projects.json`, which the app manages for you. If that file can't be read, the app keeps it as `projects.json.unreadable-<timestamp>` and starts fresh.
 
 - **Add Project** (⌘O, or the button at the bottom of the sidebar): pick a folder. Its name becomes the project name.
 - **Project menu** (right-click a project name): Rename, Change Folder, Remove. Removing stops the project's sessions and never touches the folder on disk.
-- **Agents `+`**: starts an agent from the saved list. **Custom…** runs a one-off command, and can save it to the list. **Manage List…** removes saved agents.
+- **Agents `+`**: starts one of the agents you have enabled. **Custom…** runs a one-off command.
+- **Settings** (⌘,): lists the built-in agents and lets you choose which ones appear in the Agents `+` menu. Running agents are not affected. The catalogue: Claude Code (`claude`), Codex (`codex`), Gemini CLI (`gemini`), GitHub Copilot (`copilot`), Cursor Agent (`cursor-agent`), Aider (`aider`), OpenCode (`opencode`), Amp (`amp`). Only Claude Code is enabled until you choose otherwise.
 - **Commands `+`**: add a command (name, command, and whether to start it automatically when Mothership opens). Right-click a command for Start, Stop, Restart, Edit… and Delete…. A command can also have a working directory, relative to the project folder (or an absolute path); blank means the project folder. A changed command or directory applies on the next Start or Restart.
 
 ## Shortcuts
