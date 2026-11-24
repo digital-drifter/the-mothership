@@ -43,6 +43,35 @@ private func drainMainQueue() async throws -> Void {
         #expect(recorder.sent.isEmpty)
     }
 
+    /// Live output is parsed on the control client's background queue, not the main thread.
+    @Test func testQueriesFedFromABackgroundThreadAreNotAnsweredAgain() async throws -> Void {
+        let (view, recorder) = makeView()
+        let bytes = Array("\u{1b}[6n\u{1b}[c\u{1b}[>c\u{1b}[5n".utf8)
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            DispatchQueue.global().async {
+                view.feedOutput(bytes[...])
+                continuation.resume()
+            }
+        }
+        try await drainMainQueue()
+        #expect(recorder.sent.isEmpty)
+    }
+
+    @Test func testOutputFedFromABackgroundThreadReachesTheScreenInOrder() async throws -> Void {
+        let (view, _) = makeView()
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            DispatchQueue.global().async {
+                for index in 0..<200 { view.feedOutput(Array("line-\(index)\r\n".utf8)[...]) }
+                continuation.resume()
+            }
+        }
+        try await drainMainQueue()
+        let text = String(decoding: view.getBufferAsData(kind: .normal), as: UTF8.self)
+        let first = try #require(text.range(of: "line-150"))
+        let second = try #require(text.range(of: "line-199"))
+        #expect(first.lowerBound < second.lowerBound)
+    }
+
     @Test func testMouseReportsStillReachThePane() async throws -> Void {
         let (view, recorder) = makeView()
         let window = NSWindow(

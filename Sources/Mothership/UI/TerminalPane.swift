@@ -22,9 +22,11 @@ final class PaneTerminalView: TerminalView {
 
     private let responseGate = TerminalResponseGate()
 
-    /// Feeds bytes that came from the pane (seed or live output). SwiftTerm parses them synchronously,
-    /// so any reply it generates for a query in them reaches `send(source:data:)` inside this call.
-    func feedOutput(_ bytes: ArraySlice<UInt8>) -> Void {
+    /// Feeds bytes that came from the pane (seed or live output). Callable from any thread; the session
+    /// calls it on its control client's queue so parsing stays off the main thread. SwiftTerm parses
+    /// synchronously on the calling thread, so any reply it generates for a query in the bytes reaches
+    /// `send(source:data:)` inside this call, on this thread, where the gate drops it.
+    nonisolated func feedOutput(_ bytes: ArraySlice<UInt8>) -> Void {
         responseGate.whileFeeding { feed(byteArray: bytes) }
     }
 

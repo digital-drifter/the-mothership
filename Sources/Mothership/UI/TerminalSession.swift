@@ -23,6 +23,8 @@ final class TerminalSession {
     @ObservationIgnored private var isAttached = false
     /// Incremented per connection so callbacks from an old client are ignored.
     @ObservationIgnored private var generation = 0
+    /// The live connection's flag; output from a connection whose flag was invalidated is discarded.
+    @ObservationIgnored private var connection: ConnectionFlag?
     /// A window drag changes the size on every frame, and each size sent to tmux makes the program
     /// redraw its whole screen. Only the size the drag settles on is sent.
     @ObservationIgnored private lazy var resizeDebouncer = TrailingDebouncer<(cols: Int, rows: Int)>(
@@ -55,14 +57,15 @@ final class TerminalSession {
             tmuxPath: tmux.tmuxPath, configPath: tmux.tmuxConfPath, socketName: tmux.socketName,
             session: sessionName)
         let stream = PaneStream(channel: client, session: sessionName)
-        // Callbacks arrive in order on the client's serial queue; the main queue keeps that order.
-        // Output is batched: one hop to the main thread carries everything that arrived before it ran.
-        let batcher = ByteBatcher()
-        stream.onBytes = { [weak self] bytes in
-            guard batcher.append(bytes) else { return }
-            DispatchQueue.main.async {
-                MainActor.assumeIsolated { self?.receive(batcher.drain(), generation: generation) }
-            }
+        // Output is parsed right here on the client's serial queue, in arrival order, never on the main
+        // thread: a flooding pane (visible or not) must not compete with typing and scrolling.
+        connection?.invalidate()
+        let connection = ConnectionFlag()
+        self.connection = connection
+        let view = view
+        stream.onBytes = { bytes in
+            guard connection.isCurrent else { return }
+            view.feedOutput(bytes[...])
         }
         stream.onFailure = { [weak self] message in
             DispatchQueue.main.async {
@@ -99,6 +102,8 @@ final class TerminalSession {
     /// Detaches the client; the tmux session keeps running.
     func close() -> Void {
         generation += 1
+        connection?.invalidate()
+        connection = nil
         resizeDebouncer.cancel()
         client?.terminate()
         client = nil
@@ -129,15 +134,23 @@ final class TerminalSession {
         stream.attach(cols: size.cols, rows: size.rows)
     }
 
-    private func receive(_ bytes: [UInt8], generation: Int) -> Void {
-        guard generation == self.generation else { return }
-        view.feedOutput(bytes[...])
-    }
-
     private func disconnect(_ message: String, generation: Int) -> Void {
         guard generation == self.generation else { return }
         close()
         disconnectedMessage = message
+    }
+}
+
+/// Whether a connection's output is still wanted. Read on the control client's queue, cleared on the
+/// main thread when the connection is closed or replaced.
+private final class ConnectionFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var current = true
+
+    var isCurrent: Bool { lock.withLock { current } }
+
+    func invalidate() -> Void {
+        lock.withLock { current = false }
     }
 }
 
