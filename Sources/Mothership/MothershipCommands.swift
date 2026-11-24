@@ -18,7 +18,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-/// App-wide menu items: New Terminal, project shortcuts and Stop All and Quit.
+/// App-wide menu items: Add Project, project shortcuts and Stop All and Quit.
 struct MothershipCommands: Commands {
     let launcher: AppLauncher
     let navigation: SidebarNavigation
@@ -34,9 +34,6 @@ struct MothershipCommands: Commands {
             Button("Add Project…") { addProject() }
                 .keyboardShortcut("o", modifiers: .command)
                 .disabled(state == nil)
-            Button("New Terminal") { newTerminal() }
-                .keyboardShortcut("t", modifiers: .command)
-                .disabled(terminalTarget == nil)
         }
         CommandMenu("Projects") {
             let sections = state?.sections ?? []
@@ -52,22 +49,11 @@ struct MothershipCommands: Commands {
         }
     }
 
-    private var terminalTarget: ProjectSection? {
-        state.flatMap { navigation.terminalTarget(in: $0.sections) }
-    }
-
     private func addProject() -> Void {
         guard let state else { return }
         addProjectInteractively(state: state, navigation: navigation)
     }
 
-    private func newTerminal() -> Void {
-        guard let state, let target = terminalTarget else { return }
-        navigation.setExpanded(true, for: target.id)
-        Task {
-            if let id = await state.newTerminal(projectSlug: target.id) { navigation.selection = id }
-        }
-    }
 
     private func confirmStopAll() -> Void {
         guard let state else { return }

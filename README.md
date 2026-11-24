@@ -31,7 +31,6 @@ Projects are added in the app. Everything (projects, commands, the saved agent l
 | --- | --- |
 | ⌘1 … ⌘9 | Select the first item of the Nth project and expand it |
 | ⌘O | Add Project |
-| ⌘T | New terminal in the selected item's project (the first project if nothing is selected) |
 | ⌘Q | Quit, leaving every session running |
 | ⌥⌘Q | Stop All and Quit: asks to confirm, then ends the tmux server and every session |
 

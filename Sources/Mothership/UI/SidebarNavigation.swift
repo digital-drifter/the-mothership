@@ -46,13 +46,4 @@ final class SidebarNavigation {
         }
         if let owner, owner.id != projectSlug { selection = nil }
     }
-
-    /// The project new terminals go to: the selected item's project, else the first config project.
-    func terminalTarget(in sections: [ProjectSection]) -> ProjectSection? {
-        let selected = sections.first { section in
-            (section.agents + section.commands + section.terminals).contains { $0.id == selection }
-        }
-        let target = selected ?? sections.first { !$0.isOrphan }
-        return target.flatMap { $0.isOrphan ? nil : $0 }
-    }
 }
