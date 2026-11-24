@@ -9,7 +9,6 @@ public struct MothershipConfig: Codable, Equatable, Sendable {
 
     public static let defaultAgents: [AgentTemplate] = [
         AgentTemplate(name: "Claude", run: "claude"),
-        AgentTemplate(name: "Codex", run: "codex"),
     ]
 
     /// What the app starts with when there is no file: the default agents and no projects.

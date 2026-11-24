@@ -23,9 +23,7 @@ struct ProjectStoreTests {
         #expect(loaded.config == .empty)
         #expect(loaded.warning == nil)
         #expect(loaded.canSave)
-        #expect(MothershipConfig.empty.agents == [
-            AgentTemplate(name: "Claude", run: "claude"), AgentTemplate(name: "Codex", run: "codex"),
-        ])
+        #expect(MothershipConfig.empty.agents == [AgentTemplate(name: "Claude", run: "claude")])
         #expect(!FileManager.default.fileExists(atPath: url.path))
     }
 
