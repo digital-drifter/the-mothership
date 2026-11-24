@@ -23,13 +23,21 @@ final class TerminalSession {
     @ObservationIgnored private var isAttached = false
     /// Incremented per connection so callbacks from an old client are ignored.
     @ObservationIgnored private var generation = 0
+    /// A window drag changes the size on every frame, and each size sent to tmux makes the program
+    /// redraw its whole screen. Only the size the drag settles on is sent.
+    @ObservationIgnored private lazy var resizeDebouncer = TrailingDebouncer<(cols: Int, rows: Int)>(
+        delay: .milliseconds(80)
+    ) { [weak self] size in
+        guard let self, self.isAttached else { return }
+        self.stream?.resize(cols: size.cols, rows: size.rows)
+    }
 
     init(sessionName: String, tmux: TmuxEnvironment) {
         self.sessionName = sessionName
         self.tmux = tmux
         let view = PaneTerminalView(
             frame: .zero, font: NSFont.monospacedSystemFont(ofSize: 13, weight: .regular),
-            options: TerminalOptions(scrollback: 50_000))
+            options: TerminalOptions(scrollback: SeedBuilder.historyLines))
         self.view = view
         bridge = TerminalBridge()
         bridge.session = self
@@ -48,9 +56,12 @@ final class TerminalSession {
             session: sessionName)
         let stream = PaneStream(channel: client, session: sessionName)
         // Callbacks arrive in order on the client's serial queue; the main queue keeps that order.
+        // Output is batched: one hop to the main thread carries everything that arrived before it ran.
+        let batcher = ByteBatcher()
         stream.onBytes = { [weak self] bytes in
+            guard batcher.append(bytes) else { return }
             DispatchQueue.main.async {
-                MainActor.assumeIsolated { self?.receive(bytes, generation: generation) }
+                MainActor.assumeIsolated { self?.receive(batcher.drain(), generation: generation) }
             }
         }
         stream.onFailure = { [weak self] message in
@@ -88,6 +99,7 @@ final class TerminalSession {
     /// Detaches the client; the tmux session keeps running.
     func close() -> Void {
         generation += 1
+        resizeDebouncer.cancel()
         client?.terminate()
         client = nil
         stream = nil
@@ -102,7 +114,7 @@ final class TerminalSession {
 
     fileprivate func sizeChanged(cols: Int, rows: Int) -> Void {
         guard isAttached, cols > 0, rows > 0 else { return }
-        stream?.resize(cols: cols, rows: rows)
+        resizeDebouncer.submit((cols: cols, rows: rows))
     }
 
     // MARK: - Private
@@ -112,6 +124,8 @@ final class TerminalSession {
         let size = view.terminalDimensions
         guard size.cols > 0, size.rows > 0 else { return }
         isAttached = true
+        // attach sends the current size itself.
+        resizeDebouncer.cancel()
         stream.attach(cols: size.cols, rows: size.rows)
     }
 

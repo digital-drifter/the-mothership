@@ -56,10 +56,14 @@ public struct PaneSnapshot: Equatable, Sendable {
 /// Verified against tmux 3.8 while the alternate screen is active:
 /// - `capture-pane` without `-a` returns the history plus the alternate (visible) screen.
 /// - `capture-pane -a` returns the saved normal screen, without history.
-/// - `-S -50000 -E -1` returns only history, except that with no history it returns the first visible line.
+/// - `-S -<n> -E -1` returns only history, except that with no history it returns the first visible line.
 public enum SeedBuilder {
     public static let marker: String = "---ms-snapshot---"
     public static let snapshotReplyCount: Int = 5
+    /// History lines captured into a seed, and the scrollback the terminal view keeps. tmux itself keeps
+    /// more (`history-limit`). Memory, attach time and resize reflow all grow with this number: at 50,000
+    /// one view held about 60 MB and an attach stalled the shared tmux server for about 200 ms.
+    public static let historyLines: Int = 10_000
 
     private static let headerFormat: String = [
         "#{alternate_on}", "#{cursor_x}", "#{cursor_y}", "#{alternate_saved_x}", "#{alternate_saved_y}",
@@ -73,7 +77,7 @@ public enum SeedBuilder {
         [
             "display-message -p -- '\(marker)'",
             "display-message -p -t \(target) '\(headerFormat)'",
-            "capture-pane -p -e -J -S -50000 -E -1 -t \(target)",  // history
+            "capture-pane -p -e -J -S -\(historyLines) -E -1 -t \(target)",  // history
             "capture-pane -p -e -J -a -q -t \(target)",  // saved normal screen (alternate only)
             "capture-pane -p -e -J -t \(target)",  // visible screen
         ].joined(separator: "\n")

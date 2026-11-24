@@ -268,10 +268,13 @@ public final class AppState {
     /// left alone they would pile up, and re-adding the command would show their old output.
     private func killDeadOrphanCommands(_ panes: [PaneInfo]) async -> Void {
         guard hasLoadedConfig else { return }
-        let orphans = panes.filter {
-            $0.kind == .command && $0.isDead && configuredCommand($0.sessionName) == nil
-                && !killingOrphans.contains($0.sessionName)
-        }
+        let dead = panes.filter { $0.kind == .command && $0.isDead && !killingOrphans.contains($0.sessionName) }
+        guard !dead.isEmpty else { return }
+        // Built once per refresh: looking each dead pane up command by command was quadratic.
+        let configured = Set(config.projects.flatMap { project in
+            project.commands.map { SessionName.make(projectSlug: project.slug, kind: .command, id: $0.slug) }
+        })
+        let orphans = dead.filter { !configured.contains($0.sessionName) }
         for pane in orphans {
             killingOrphans.insert(pane.sessionName)
             defer { killingOrphans.remove(pane.sessionName) }

@@ -14,6 +14,8 @@ public struct ControlModeParser: Sendable {
     private static let percent: UInt8 = 0x25
     private static let space: UInt8 = 0x20
     private static let backslash: UInt8 = 0x5C
+    private static let outputPrefix: [UInt8] = Array("%output ".utf8)
+    private static let extendedOutputPrefix: [UInt8] = Array("%extended-output ".utf8)
     private static let dcsPrefix: [UInt8] = [0x1B, 0x50, 0x31, 0x30, 0x30, 0x30, 0x70]
 
     private struct Block: Sendable {
@@ -119,8 +121,8 @@ public struct ControlModeParser: Sendable {
 
     /// `%output %<id> <data>` and `%extended-output %<id> <age> : <data>`; data is never CR-stripped.
     private static func parseOutput(_ line: ArraySlice<UInt8>) -> ControlEvent? {
-        let output = Array("%output ".utf8)
-        let extended = Array("%extended-output ".utf8)
+        let output = outputPrefix
+        let extended = extendedOutputPrefix
         let isExtended = line.starts(with: extended)
         guard isExtended || line.starts(with: output) else { return nil }
         let idStart = line.startIndex + (isExtended ? extended.count : output.count)

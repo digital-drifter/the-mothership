@@ -185,8 +185,19 @@ public final class ControlClient: ControlChannel, @unchecked Sendable {
     }
 
     /// Splits into non-blank lines; tmux treats an empty control-mode line as a request to detach.
-    private static func commandLines(_ text: String) -> [String] {
-        text.split(whereSeparator: \.isNewline)
+    static func commandLines(_ text: String) -> [String] {
+        // Fast path: one ASCII line (every `send-keys -H`, however large) needs no splitting.
+        var isSingleASCIILine = true
+        var hasContent = false
+        for byte in text.utf8 {
+            if byte >= 0x80 || (byte >= 0x0A && byte <= 0x0D) {
+                isSingleASCIILine = false
+                break
+            }
+            if byte != 0x20 && byte != 0x09 { hasContent = true }
+        }
+        if isSingleASCIILine { return hasContent ? [text] : [] }
+        return text.split(whereSeparator: \.isNewline)
             .map(String.init)
             .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
     }

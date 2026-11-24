@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import MothershipCore
 import Observation
@@ -19,6 +20,7 @@ final class AppLauncher {
 
     @ObservationIgnored private var started = false
     @ObservationIgnored private var refreshLoop: Task<Void, Never>?
+    @ObservationIgnored private var activationObserver: NSObjectProtocol?
 
     init(options: LaunchOptions = .current()) {
         self.options = options
@@ -64,13 +66,27 @@ final class AppLauncher {
         startRefreshLoop(state, terminals)
     }
 
-    /// Refreshes every second; each refresh finishes before the next sleep, so they never overlap.
+    /// Refreshes on `RefreshPolicy`'s schedule (slower while the app is in the background); each refresh
+    /// finishes before the next sleep. Coming back to the front refreshes at once, so nothing looks stale.
     private func startRefreshLoop(_ state: AppState, _ terminals: TerminalSessionCache) -> Void {
         refreshLoop = Task {
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(1))
+                let isActive = NSApp.isActive
+                try? await Task.sleep(
+                    for: RefreshPolicy.interval(appIsActive: isActive),
+                    tolerance: RefreshPolicy.tolerance(appIsActive: isActive))
                 await state.refresh()
                 Self.prune(terminals, to: state)
+            }
+        }
+        activationObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { _ in
+            MainActor.assumeIsolated {
+                _ = Task {
+                    await state.refresh()
+                    Self.prune(terminals, to: state)
+                }
             }
         }
     }

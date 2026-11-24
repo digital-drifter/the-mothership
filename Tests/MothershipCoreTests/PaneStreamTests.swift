@@ -265,3 +265,32 @@ private func makeStream() -> (FakeChannel, PaneStream, ByteLog) {
         #expect(snapshot?.mouseButton == true)
     }
 }
+
+@Suite struct ControlCommandLinesTests {
+    @Test func testASingleLineCommandIsReturnedUnchanged() -> Void {
+        #expect(ControlClient.commandLines("send-keys -H -t =s: 61 62") == ["send-keys -H -t =s: 61 62"])
+        #expect(ControlClient.commandLines("  kill-session\t") == ["  kill-session\t"])
+    }
+
+    @Test func testBlankInputGivesNoLines() -> Void {
+        #expect(ControlClient.commandLines("") == [])
+        #expect(ControlClient.commandLines("  \t ") == [])
+        #expect(ControlClient.commandLines("\n \r\n") == [])
+    }
+
+    @Test func testSeveralCommandsAreSplitAndBlankLinesDropped() -> Void {
+        #expect(ControlClient.commandLines("a\n\n  \nb\r\nc") == ["a", "b", "c"])
+    }
+
+    @Test func testNonASCIITextStillSplitsOnUnicodeLineSeparators() -> Void {
+        #expect(ControlClient.commandLines("é\u{2028}x") == ["é", "x"])
+        #expect(ControlClient.commandLines("display-message 'é'") == ["display-message 'é'"])
+    }
+}
+
+@Suite struct HistoryDepthTests {
+    @Test func testTheSnapshotCapturesExactlyTheHistoryTheViewKeeps() -> Void {
+        #expect(SeedBuilder.historyLines == 10_000)
+        #expect(SeedBuilder.snapshotCommand(target: "=s:").contains("capture-pane -p -e -J -S -10000 -E -1 -t =s:"))
+    }
+}

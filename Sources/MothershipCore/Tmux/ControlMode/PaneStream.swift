@@ -19,7 +19,7 @@ public final class PaneStream: @unchecked Sendable {
     }
 
     private static let maxInputChunk = 1024
-    private static let hexDigits: [String] = (0...255).map { String(format: "%02x", $0) }
+    private static let hexDigits: [UInt8] = Array("0123456789abcdef".utf8)
 
     private let channel: ControlChannel
     private let target: String
@@ -53,11 +53,20 @@ public final class PaneStream: @unchecked Sendable {
     }
 
     public func sendInput(_ bytes: [UInt8]) -> Void {
+        // Built as bytes: a large paste is megabytes of hex, and per-byte String work made it stall the UI.
+        let prefix = Array("send-keys -H -t \(target)".utf8)
         var start = 0
         while start < bytes.count {
             let end = min(start + Self.maxInputChunk, bytes.count)
-            let hex = bytes[start..<end].map { Self.hexDigits[Int($0)] }.joined(separator: " ")
-            channel.send("send-keys -H -t \(target) \(hex)")
+            var line: [UInt8] = []
+            line.reserveCapacity(prefix.count + (end - start) * 3)
+            line.append(contentsOf: prefix)
+            for byte in bytes[start..<end] {
+                line.append(0x20)
+                line.append(Self.hexDigits[Int(byte >> 4)])
+                line.append(Self.hexDigits[Int(byte & 0x0F)])
+            }
+            channel.send(String(decoding: line, as: UTF8.self))
             start = end
         }
     }
