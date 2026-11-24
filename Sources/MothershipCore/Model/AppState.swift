@@ -4,7 +4,7 @@ import Observation
 @MainActor @Observable
 public final class AppState {
     public private(set) var sections: [ProjectSection] = []
-    /// The stored projects and agent templates, as last loaded.
+    /// The stored projects and enabled agents, as last loaded.
     public private(set) var config = MothershipConfig.empty
     public var actionError: String?
     /// Called after a refresh with the sessions whose pane process was replaced since the last one.

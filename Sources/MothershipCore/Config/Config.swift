@@ -7,7 +7,7 @@ public struct MothershipConfig: Codable, Equatable, Sendable {
     public var enabledAgents: [String]
     public var projects: [ProjectConfig]
 
-    /// What the app starts with when there is no file: the default agents and no projects.
+    /// What the app starts with when there is no file: the default enabled agents and no projects.
     public static var empty: MothershipConfig {
         MothershipConfig(version: 1, enabledAgents: AgentCatalog.defaultEnabled, projects: [])
     }

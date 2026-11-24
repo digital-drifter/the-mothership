@@ -4,9 +4,20 @@ import SwiftUI
 /// Settings: which of the built-in agents appear in the Agents + menu.
 struct AgentSettingsView: View {
     let state: AppState
+    /// Bumped when a toggle change didn't stick, so the body re-renders and the switch snaps back.
+    @State private var revision = 0
 
     var body: some View {
         Form {
+            if let message = state.actionError {
+                Section {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(message).foregroundStyle(.red)
+                        Spacer()
+                        Button("Dismiss") { state.actionError = nil }
+                    }
+                }
+            }
             Section {
                 ForEach(AgentCatalog.all) { agent in
                     Toggle(isOn: binding(for: agent)) {
@@ -28,6 +39,7 @@ struct AgentSettingsView: View {
             }
         }
         .formStyle(.grouped)
+        .id(revision)
         .frame(width: 420)
         .fixedSize(horizontal: false, vertical: true)
     }
@@ -35,7 +47,10 @@ struct AgentSettingsView: View {
     private func binding(for agent: KnownAgent) -> Binding<Bool> {
         Binding(
             get: { state.isAgentEnabled(agent.id) },
-            set: { state.setAgent(agent.id, enabled: $0) }
+            set: { newValue in
+                state.setAgent(agent.id, enabled: newValue)
+                if state.isAgentEnabled(agent.id) != newValue { revision += 1 }
+            }
         )
     }
 }

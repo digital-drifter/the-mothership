@@ -41,6 +41,19 @@ struct ProjectStoreTests {
         #expect(loaded.config.projects.map(\.slug) == ["es"])
     }
 
+    @Test func testSavingDropsTheOldAgentsKey() throws -> Void {
+        let url = try makeDirectory().appendingPathComponent("projects.json")
+        let json = """
+        {"version": 1, "agents": [{"name": "Old", "run": "old"}], "projects": []}
+        """
+        try Data(json.utf8).write(to: url)
+        let store = ProjectStore(url: url)
+        try store.save(store.load().config)
+        let text = try String(contentsOf: url, encoding: .utf8)
+        #expect(!text.contains("\"agents\""))
+        #expect(text.contains("\"enabledAgents\""))
+    }
+
     @Test func testEnabledAgentsRoundTrip() throws -> Void {
         let store = ProjectStore(url: try makeDirectory().appendingPathComponent("projects.json"))
         let config = MothershipConfig(version: 1, enabledAgents: ["codex", "claude"], projects: [])
