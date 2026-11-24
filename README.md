@@ -1,32 +1,40 @@
-# The Mothership
+<p align="center">
+  <img src="Resources/AppIcon.svg" width="128" height="128" alt="The Mothership app icon">
+</p>
 
-A native macOS app (SwiftUI, macOS 15+) that manages project terminals via a private tmux server.
+<h1 align="center">The Mothership</h1>
 
-## Build
+A native macOS command center for your projects. Each project in the sidebar has its **agents** (Claude Code, Codex, …), **commands** (dev servers, queue workers, …) and **terminals**, all running in tmux, so they keep running when you quit or rebuild the app.
 
+![A project's dev server running in The Mothership](screenshots/command.png)
+
+## Installation
+
+You need macOS 15 or later, the Xcode command line tools (Swift 6) and tmux:
+
+    xcode-select --install
+    brew install tmux
+
+Then build the app and copy it to Applications:
+
+    git clone https://github.com/digital-drifter/the-mothership.git
+    cd the-mothership
     ./scripts/build-app.sh
+    cp -R build/Mothership.app /Applications/
 
-Produces `build/Mothership.app`.
+## Usage
 
-The app icon is drawn in `Resources/AppIcon.svg`; after editing it, run `scripts/make-icon.sh` (needs `brew install librsvg`) and commit the regenerated `AppIcon.icns`.
+1. **Add a project:** click **Add Project** at the bottom of the sidebar (or press ⌘O) and choose the project's folder.
+2. **Start an agent:** click **+** next to Agents and pick one. **Custom…** runs any one-off command.
+3. **Add a command:** click **+** next to Commands and give it a name and a command such as `npm run dev`. Tick **Start automatically** to have it start whenever Mothership opens. Right-click a command to start, stop, restart, edit or delete it.
+4. **Open a terminal:** click **+** next to Terminals for a shell in the project folder.
+5. **Choose your agents:** open **Settings** (⌘,) and tick the agents you use. Only those appear in the Agents **+** menu.
 
-## Run
+Right-click a project's name to rename it, point it at a different folder, or remove it. Removing a project never touches its folder.
 
-    open build/Mothership.app
+![A terminal in The Mothership](screenshots/terminal.png)
 
-## Test
-
-    swift test
-
-## Projects and data
-
-Projects are added in the app. Everything (projects, commands, your settings) lives in `~/Library/Application Support/Mothership/projects.json`, which the app manages for you. If that file can't be read, the app keeps it as `projects.json.unreadable-<timestamp>` and starts fresh.
-
-- **Add Project** (⌘O, or the button at the bottom of the sidebar): pick a folder. Its name becomes the project name.
-- **Project menu** (right-click a project name): Rename, Change Folder, Remove. Removing stops the project's sessions and never touches the folder on disk.
-- **Agents `+`**: starts one of the agents you have enabled. **Custom…** runs a one-off command.
-- **Settings** (⌘,): lists the built-in agents and lets you choose which ones appear in the Agents `+` menu. Running agents are not affected. The catalogue: Claude Code (`claude`), Codex (`codex`), Gemini CLI (`gemini`), GitHub Copilot (`copilot`), Cursor Agent (`cursor-agent`), Aider (`aider`), OpenCode (`opencode`), Amp (`amp`). Only Claude Code is enabled until you choose otherwise.
-- **Commands `+`**: add a command (name, command, and whether to start it automatically when Mothership opens). Right-click a command for Start, Stop, Restart, Edit… and Delete…. A command can also have a working directory, relative to the project folder (or an absolute path); blank means the project folder. A changed command or directory applies on the next Start or Restart.
+Quitting with ⌘Q leaves everything running; it is all there again the next time you open the app. Use ⌥⌘Q to stop everything and quit.
 
 ## Shortcuts
 
@@ -34,19 +42,18 @@ Projects are added in the app. Everything (projects, commands, your settings) li
 | --- | --- |
 | ⌘1 … ⌘9 | Select the first item of the Nth project and expand it |
 | ⌘O | Add Project |
+| ⌘, | Settings |
 | ⌘Q | Quit, leaving every session running |
-| ⌥⌘Q | Stop All and Quit: asks to confirm, then ends the tmux server and every session |
+| ⌥⌘Q | Stop All and Quit: asks to confirm, then ends every session |
 
-## tmux
+## Where things live
 
-Sessions live on a private tmux server (socket `mothership`) that uses an app-owned config at `~/Library/Application Support/Mothership/tmux.conf`. Your own tmux and `~/.tmux.conf` are never touched. From a normal shell, list the sessions with:
+- Your projects and settings: `~/Library/Application Support/Mothership/projects.json`, managed by the app.
+- Sessions run on a private tmux server, separate from your own tmux. To list them from a shell: `tmux -L mothership ls`.
 
-    tmux -L mothership ls
+## Development
 
-## Launch overrides
+    swift test              # run the tests
+    ./scripts/build-app.sh  # build build/Mothership.app
 
-Pass these as launch arguments, e.g. `open build/Mothership.app --args -dataPath /tmp/x.json -tmuxSocket ms-dev`:
-
-- `-dataPath <file>`: use this projects.json instead of the default.
-- `-tmuxSocket <name>`: use this tmux socket name instead of `mothership`.
-- `-forceTmuxMissing YES`: pretend tmux is not installed, to see the missing-tmux screen.
+The app icon is drawn in `Resources/AppIcon.svg`. After editing it, run `scripts/make-icon.sh` (needs `brew install librsvg`).
