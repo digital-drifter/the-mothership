@@ -151,7 +151,10 @@ struct SidebarView: View {
         } label: {
             Image(systemName: "plus")
         }
-        .menuStyle(.borderlessButton)
+        // .button + .borderless renders the same as the Commands and Terminals `+` buttons;
+        // .borderlessButton draws a dimmer, offset template image.
+        .menuStyle(.button)
+        .buttonStyle(.borderless)
         .menuIndicator(.hidden)
         .fixedSize()
         .help("New agent")
