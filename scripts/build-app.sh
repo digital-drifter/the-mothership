@@ -2,6 +2,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+if [ ! -f Resources/AppIcon.icns ]; then
+    echo "Resources/AppIcon.icns missing: run scripts/make-icon.sh" >&2
+    exit 1
+fi
+
 swift build -c release --product Mothership
 BIN_DIR="$(swift build -c release --show-bin-path)"
 
@@ -9,6 +14,8 @@ APP="build/Mothership.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
 cp "$BIN_DIR/Mothership" "$APP/Contents/MacOS/Mothership"
+mkdir -p "$APP/Contents/Resources"
+cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -18,6 +25,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <key>CFBundleIdentifier</key><string>local.mothership.app</string>
     <key>CFBundleName</key><string>Mothership</string>
     <key>CFBundleExecutable</key><string>Mothership</string>
+    <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>LSMinimumSystemVersion</key><string>15.0</string>
     <key>NSPrincipalClass</key><string>NSApplication</string>

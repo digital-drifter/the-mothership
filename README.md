@@ -8,6 +8,8 @@ A native macOS app (SwiftUI, macOS 15+) that manages project terminals via a pri
 
 Produces `build/Mothership.app`.
 
+The app icon is drawn in `Resources/AppIcon.svg`; after editing it, run `scripts/make-icon.sh` (needs `brew install librsvg`) and commit the regenerated `AppIcon.icns`.
+
 ## Run
 
     open build/Mothership.app
