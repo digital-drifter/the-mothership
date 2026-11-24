@@ -23,7 +23,7 @@ Projects are added in the app. Everything (projects, commands, the saved agent l
 - **Add Project** (⌘O, or the button at the bottom of the sidebar): pick a folder. Its name becomes the project name.
 - **Project menu** (right-click a project name): Rename, Change Folder, Remove. Removing stops the project's sessions and never touches the folder on disk.
 - **Agents `+`**: starts an agent from the saved list. **Custom…** runs a one-off command, and can save it to the list. **Manage List…** removes saved agents.
-- **Commands `+`**: add a command (name, command, and whether to start it automatically when Mothership opens). Right-click a command for Start, Stop, Restart, Edit… and Delete…. A changed command applies on the next Start or Restart.
+- **Commands `+`**: add a command (name, command, and whether to start it automatically when Mothership opens). Right-click a command for Start, Stop, Restart, Edit… and Delete…. A command can also have a working directory, relative to the project folder (or an absolute path); blank means the project folder. A changed command or directory applies on the next Start or Restart.
 
 ## Shortcuts
 

@@ -427,7 +427,7 @@ extension AppState {
         return SessionName.make(projectSlug: projectSlug, kind: .command, id: slug)
     }
 
-    /// Saves the changes. A running session picks up the new name at once; a new run line applies on the next start.
+    /// Saves the changes. A running session picks up the new name at once; a new run line or directory applies on the next Start or Restart.
     public func editCommand(projectSlug: String, commandSlug: String, name: String, run: String, directory: String, autostart: Bool) async -> Void {
         if let problem = validateCommand(projectSlug: projectSlug, name: name, run: run, directory: directory, editing: commandSlug) {
             actionError = problem

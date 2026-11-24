@@ -59,9 +59,9 @@ struct SidebarView: View {
         .sheet(item: $sheet) { sheet in
             switch sheet {
             case .newCommand(let slug):
-                CommandSheet(state: state, projectSlug: slug, editing: nil) { navigation.selection = $0 }
+                CommandSheet(state: state, projectSlug: slug, projectPath: projectPath(of: slug), editing: nil) { navigation.selection = $0 }
             case .editCommand(let slug, let editing):
-                CommandSheet(state: state, projectSlug: slug, editing: editing) { _ in }
+                CommandSheet(state: state, projectSlug: slug, projectPath: projectPath(of: slug), editing: editing) { _ in }
             case .customAgent(let slug):
                 CustomAgentSheet(state: state, projectSlug: slug) { navigation.selection = $0 }
             case .manageAgents:
@@ -250,6 +250,10 @@ struct SidebarView: View {
         }
     }
 
+    private func projectPath(of slug: String) -> String {
+        state.config.projects.first { $0.slug == slug }?.path ?? ""
+    }
+
     private func edit(_ item: SidebarItem, in section: ProjectSection) -> Void {
         let slug = item.commandSlug(in: section)
         guard let stored = state.config.projects.first(where: { $0.slug == section.id })?.commands.first(where: { $0.slug == slug })
@@ -257,7 +261,7 @@ struct SidebarView: View {
         sheet = .editCommand(
             projectSlug: section.id,
             editing: CommandSheet.Editing(
-                slug: slug, name: stored.name, run: stored.run, autostart: stored.autostart,
+                slug: slug, name: stored.name, run: stored.run, directory: stored.directory ?? "", autostart: stored.autostart,
                 isRunning: item.status == .running))
     }
 
