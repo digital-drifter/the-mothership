@@ -12,6 +12,25 @@ import Testing
         #expect(state.sections.isEmpty)
     }
 
+    @Test func testTwoStartsAtOnceCreateTheSessionOnce() async throws -> Void {
+        let fake = FakeTmux()
+        let (state, _) = try makeState(tmux: fake)
+        async let first: Void = state.start(commandSlug: "vite", projectSlug: "es")
+        async let second: Void = state.start(commandSlug: "vite", projectSlug: "es")
+        _ = await (first, second)
+        let creates = await fake.calls.filter { $0.first == "new-session" }
+        #expect(creates.count == 1)
+        #expect(state.actionError == nil)
+    }
+
+    @Test func testStartTreatsAnAlreadyExistingSessionAsRunning() async throws -> Void {
+        let fake = FakeTmux()
+        await fake.fail(command: "new-session", with: TmuxError(message: "duplicate session: ms-es-cmd-vite", exitCode: 1))
+        let (state, _) = try makeState(tmux: fake)
+        await state.start(commandSlug: "vite", projectSlug: "es")
+        #expect(state.actionError == nil)
+    }
+
     @Test func testStartNewCommandCallsNewSessionWithShellArgv() async throws -> Void {
         let fake = FakeTmux()
         let (state, _) = try makeState(tmux: fake)

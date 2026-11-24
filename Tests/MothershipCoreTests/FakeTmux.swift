@@ -6,6 +6,7 @@ actor FakeTmux: TmuxCommanding {
     private var paneScript: [[PaneInfo]]
     private var failure: TmuxError?
     private var argvFailures: [[String]: TmuxError] = [:]
+    private var commandFailures: [String: TmuxError] = [:]
     private var holdNextList = false
     private var held: [CheckedContinuation<Void, Never>] = []
 
@@ -27,6 +28,11 @@ actor FakeTmux: TmuxCommanding {
         argvFailures[args] = error
     }
 
+    /// Any call whose first argument (the tmux command) is `command` throws `error`.
+    func fail(command: String, with error: TmuxError) -> Void {
+        commandFailures[command] = error
+    }
+
     /// The next list-panes call takes its list right away but only returns once `releaseHeld()` runs.
     func holdNextListPanes() -> Void {
         holdNextList = true
@@ -43,6 +49,7 @@ actor FakeTmux: TmuxCommanding {
         calls.append(args)
         if let failure { throw failure }
         if let error = argvFailures[args] { throw error }
+        if let command = args.first, let error = commandFailures[command] { throw error }
         if args.count == 5, args[0] == "set-option", args[3] == "@ms_name" {
             applyName(args[4], toTarget: args[2])
             return ""

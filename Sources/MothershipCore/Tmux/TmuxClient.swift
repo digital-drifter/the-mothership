@@ -8,6 +8,11 @@ public struct TmuxError: Error, Equatable {
         self.message = message
         self.exitCode = exitCode
     }
+
+    /// tmux refused `new-session` because a session with that name already exists.
+    public var isDuplicateSession: Bool {
+        exitCode != -1 && message.contains("duplicate session")
+    }
 }
 
 public struct SessionMetadata: Equatable, Sendable {

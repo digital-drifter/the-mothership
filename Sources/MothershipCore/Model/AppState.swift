@@ -30,6 +30,8 @@ public final class AppState {
     @ObservationIgnored private var killingOrphans: Set<String> = []
     /// Names handed out by in-flight creates, so concurrent creates never pick the same number.
     @ObservationIgnored private var pendingNames: [String: Set<String>] = [:]
+    /// Command sessions with a Start in flight, so overlapping Starts create each session only once.
+    @ObservationIgnored private var startingCommands: Set<String> = []
 
     public init(
         tmux: TmuxCommanding, store: ProjectStore, shell: String,
@@ -106,6 +108,11 @@ public final class AppState {
         }
         guard folderExists(project), let directory = commandDirectory(project, command) else { return }
         let session = SessionName.make(projectSlug: projectSlug, kind: .command, id: commandSlug)
+        // `panes` only learns about a new session at the refresh below, so a second Start arriving
+        // meanwhile (a double click, or Start right after Add) would try to create it again.
+        guard !startingCommands.contains(session) else { return }
+        startingCommands.insert(session)
+        defer { startingCommands.remove(session) }
         do {
             if let existing = panes.first(where: { $0.sessionName == session }) {
                 if existing.isDead {
@@ -116,6 +123,8 @@ public final class AppState {
                     name: session, directory: directory, command: [shell, "-lc", command.run],
                     metadata: SessionMetadata(project: projectSlug, kind: .command, name: command.name, template: ""))
             }
+        } catch let error as TmuxError where error.isDuplicateSession {
+            // Already running (started outside this app's view of tmux); nothing to do.
         } catch {
             report(error)
         }
