@@ -3,23 +3,30 @@ import Foundation
 /// Everything the app stores in projects.json.
 public struct MothershipConfig: Codable, Equatable, Sendable {
     public var version: Int
-    /// Agent templates shared by every project.
-    public var agents: [AgentTemplate]
+    /// Ids of the catalogue agents offered in every project's New Agent menu.
+    public var enabledAgents: [String]
     public var projects: [ProjectConfig]
-
-    public static let defaultAgents: [AgentTemplate] = [
-        AgentTemplate(name: "Claude", run: "claude"),
-    ]
 
     /// What the app starts with when there is no file: the default agents and no projects.
     public static var empty: MothershipConfig {
-        MothershipConfig(version: 1, agents: defaultAgents, projects: [])
+        MothershipConfig(version: 1, enabledAgents: AgentCatalog.defaultEnabled, projects: [])
     }
 
-    public init(version: Int, agents: [AgentTemplate], projects: [ProjectConfig]) {
+    public init(version: Int, enabledAgents: [String], projects: [ProjectConfig]) {
         self.version = version
-        self.agents = agents
+        self.enabledAgents = enabledAgents
         self.projects = projects
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case version, enabledAgents, projects
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        version = try container.decode(Int.self, forKey: .version)
+        enabledAgents = try container.decodeIfPresent([String].self, forKey: .enabledAgents) ?? AgentCatalog.defaultEnabled
+        projects = try container.decode([ProjectConfig].self, forKey: .projects)
     }
 }
 
@@ -70,15 +77,5 @@ public struct CommandConfig: Codable, Equatable, Sendable {
         self.run = run
         self.autostart = autostart
         self.directory = directory
-    }
-}
-
-public struct AgentTemplate: Codable, Equatable, Sendable {
-    public var name: String
-    public var run: String
-
-    public init(name: String, run: String) {
-        self.name = name
-        self.run = run
     }
 }

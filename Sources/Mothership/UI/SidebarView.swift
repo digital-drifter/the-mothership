@@ -64,8 +64,6 @@ struct SidebarView: View {
                 CommandSheet(state: state, projectSlug: slug, projectPath: projectPath(of: slug), editing: editing) { _ in }
             case .customAgent(let slug):
                 CustomAgentSheet(state: state, projectSlug: slug) { navigation.selection = $0 }
-            case .manageAgents:
-                ManageAgentsSheet(state: state)
             }
         }
         .confirmationDialog(
@@ -148,10 +146,10 @@ struct SidebarView: View {
     }
 
     private func showAgentMenu(_ section: ProjectSection) -> Void {
-        var entries: [PopUpMenu.Entry] = state.agents.map { template in
-            .item(template.name) {
+        var entries: [PopUpMenu.Entry] = state.enabledAgents.map { agent in
+            .item(agent.name) {
                 Task {
-                    if let id = await state.newAgent(projectSlug: section.id, templateName: template.name) {
+                    if let id = await state.newAgent(projectSlug: section.id, agentID: agent.id) {
                         navigation.selection = id
                     }
                 }
@@ -159,7 +157,6 @@ struct SidebarView: View {
         }
         if !entries.isEmpty { entries.append(.divider) }
         entries.append(.item("Custom…") { sheet = .customAgent(projectSlug: section.id) })
-        entries.append(.item("Manage List…") { sheet = .manageAgents })
         PopUpMenu.show(entries)
     }
 
@@ -315,14 +312,12 @@ private enum Sheet: Identifiable {
     case newCommand(projectSlug: String)
     case editCommand(projectSlug: String, editing: CommandSheet.Editing)
     case customAgent(projectSlug: String)
-    case manageAgents
 
     var id: String {
         switch self {
         case .newCommand(let slug): "new-command-\(slug)"
         case .editCommand(let slug, let editing): "edit-command-\(slug)-\(editing.slug)"
         case .customAgent(let slug): "custom-agent-\(slug)"
-        case .manageAgents: "manage-agents"
         }
     }
 }

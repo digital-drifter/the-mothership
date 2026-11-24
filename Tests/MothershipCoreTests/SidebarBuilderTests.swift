@@ -17,7 +17,7 @@ private let horizon = CommandConfig(slug: "horizon", name: "Horizon", run: "php 
 
 private func config(_ commands: [CommandConfig]) -> MothershipConfig {
     MothershipConfig(
-        version: 1, agents: MothershipConfig.defaultAgents,
+        version: 1, enabledAgents: ["claude"],
         projects: [ProjectConfig(slug: "app", name: "App", path: "/tmp/app", commands: commands)])
 }
 

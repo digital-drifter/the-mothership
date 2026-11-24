@@ -113,18 +113,18 @@ import Testing
         #expect(Array(create[s...].prefix(2)) == ["/bin/zsh", "-l"])
     }
 
-    @Test func testNewAgentUsesTemplateRunAndName() async throws -> Void {
+    @Test func testNewAgentUsesTheCatalogEntry() async throws -> Void {
         let fake = FakeTmux()
         let (state, _) = try makeState(tmux: fake)
-        let session = try #require(await state.newAgent(projectSlug: "es", templateName: "Claude"))
+        let session = try #require(await state.newAgent(projectSlug: "es", agentID: "claude"))
         #expect(session.hasPrefix("ms-es-agent-"))
         let create = try #require(await fake.calls.first { $0.first == "new-session" })
         let s = try #require(create.firstIndex(of: "/bin/zsh"))
         #expect(Array(create[s...].prefix(3)) == ["/bin/zsh", "-lc", "claude"])
         let n = try #require(create.firstIndex(of: "@ms_name"))
-        #expect(create[n + 1] == "Claude 1")
+        #expect(create[n + 1] == "Claude Code 1")
         let t = try #require(create.firstIndex(of: "@ms_template"))
-        #expect(create[t + 1] == "Claude")
+        #expect(create[t + 1] == "Claude Code")
     }
 
     @Test func testRunAutostartStartsOnlyPlannedCommands() async throws -> Void {
@@ -336,16 +336,19 @@ import Testing
         #expect(await state.newTerminal(projectSlug: "es") == nil)
         #expect(state.actionError == "Folder not found: /Users/test/Code/es")
         state.actionError = nil
-        #expect(await state.newAgent(projectSlug: "es", templateName: "Claude") == nil)
+        #expect(await state.newAgent(projectSlug: "es", agentID: "claude") == nil)
         #expect(state.actionError == "Folder not found: /Users/test/Code/es")
         #expect(await fake.calls.isEmpty)
     }
 
-    @Test func testNewAgentWithUnknownTemplateSetsError() async throws -> Void {
+    @Test func testNewAgentWithADisabledOrUnknownIdSetsError() async throws -> Void {
         let fake = FakeTmux()
         let (state, _) = try makeState(tmux: fake)
-        #expect(await state.newAgent(projectSlug: "es", templateName: "Nope") == nil)
-        #expect(state.actionError != nil)
-        #expect(await fake.calls.isEmpty)
+        for id in ["codex", "nope"] {
+            state.actionError = nil
+            #expect(await state.newAgent(projectSlug: "es", agentID: id) == nil)
+            #expect(state.actionError == "Unknown agent: \(id)")
+        }
+        #expect(await !fake.calls.contains { $0.first == "new-session" })
     }
 }

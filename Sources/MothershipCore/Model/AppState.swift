@@ -50,8 +50,14 @@ public final class AppState {
 
     // MARK: - Config and polling
 
-    /// The agent templates offered in every project's New Agent menu.
-    public var agents: [AgentTemplate] { config.agents }
+    /// The catalogue agents offered in every project's New Agent menu, in catalogue order.
+    public var enabledAgents: [KnownAgent] {
+        AgentCatalog.all.filter { config.enabledAgents.contains($0.id) }
+    }
+
+    public func isAgentEnabled(_ id: String) -> Bool {
+        config.enabledAgents.contains(id)
+    }
 
     /// Reads the store. An unreadable file shows its warning as the action error.
     public func load() -> Void {
@@ -169,12 +175,12 @@ public final class AppState {
     }
 
     @discardableResult
-    public func newAgent(projectSlug: String, templateName: String) async -> String? {
-        guard let template = config.agents.first(where: { $0.name == templateName }) else {
-            actionError = "Unknown agent template: \(templateName)"
+    public func newAgent(projectSlug: String, agentID: String) async -> String? {
+        guard isAgentEnabled(agentID), let agent = AgentCatalog.all.first(where: { $0.id == agentID }) else {
+            actionError = "Unknown agent: \(agentID)"
             return nil
         }
-        return await create(projectSlug: projectSlug, kind: .agent, prefix: template.name, template: template.name, run: template.run)
+        return await create(projectSlug: projectSlug, kind: .agent, prefix: agent.name, template: agent.name, run: agent.run)
     }
 
     /// Kills the private tmux server. Returns false (and sets `actionError`) when that failed.
@@ -477,27 +483,16 @@ extension AppState {
         await refresh()
     }
 
-    public func validateAgentTemplate(name: String, run: String) -> String? {
-        let cleaned = Self.trimmed(name)
-        if cleaned.isEmpty { return "Name can't be empty." }
-        if config.agents.contains(where: { $0.name.localizedCaseInsensitiveCompare(cleaned) == .orderedSame }) {
-            return "An agent named \u{201C}\(cleaned)\u{201D} is already in the list."
-        }
-        if run.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "Command can't be empty." }
-        return nil
-    }
-
-    public func addAgentTemplate(name: String, run: String) -> Void {
-        if let problem = validateAgentTemplate(name: name, run: run) {
-            actionError = problem
+    /// Turns a catalogue agent on or off. Running agents are left alone.
+    public func setAgent(_ id: String, enabled: Bool) -> Void {
+        guard AgentCatalog.all.contains(where: { $0.id == id }) else {
+            actionError = "Unknown agent: \(id)"
             return
         }
-        let template = AgentTemplate(name: Self.trimmed(name), run: run.trimmingCharacters(in: .whitespacesAndNewlines))
-        commit { $0.agents.append(template) }
-    }
-
-    public func removeAgentTemplate(name: String) -> Void {
-        commit { $0.agents.removeAll { $0.name.localizedCaseInsensitiveCompare(name) == .orderedSame } }
+        commit { config in
+            config.enabledAgents.removeAll { $0 == id }
+            if enabled { config.enabledAgents.append(id) }
+        }
     }
 
     /// Starts an agent from a one-off command, without adding it to the list. Returns its session name.

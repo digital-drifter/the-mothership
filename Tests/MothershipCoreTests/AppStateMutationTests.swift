@@ -247,6 +247,45 @@ import Testing
         #expect(await fake.calls.allSatisfy { $0.first == "list-panes" })
     }
 
+    @Test func testEnabledAgentsFollowCatalogOrderAndSkipUnknownIds() throws -> Void {
+        var config = validConfig
+        config.enabledAgents = ["amp", "gone", "claude"]
+        let (state, _) = try makeState(config: config, tmux: FakeTmux())
+        #expect(state.enabledAgents.map(\.id) == ["claude", "amp"])
+    }
+
+    @Test func testSetAgentSavesAndNeverTouchesTmux() async throws -> Void {
+        let fake = FakeTmux()
+        await fake.script([[makePane("ms-es-agent-aaa", kind: .agent, name: "Claude Code 1", template: "Claude Code")]])
+        let (state, store) = try makeState(tmux: fake)
+        await state.refresh()
+        state.setAgent("codex", enabled: true)
+        #expect(reloaded(store).enabledAgents.contains("codex"))
+        #expect(state.isAgentEnabled("codex"))
+        state.setAgent("claude", enabled: false)
+        #expect(!reloaded(store).enabledAgents.contains("claude"))
+        #expect(!state.isAgentEnabled("claude"))
+        #expect(await fake.calls.allSatisfy { $0.first == "list-panes" })
+    }
+
+    @Test func testSetAgentRefusesWhenTheFileCannotBeSaved() throws -> Void {
+        let (state, store) = try makeState(tmux: FakeTmux())
+        let folder = store.url.deletingLastPathComponent()
+        try FileManager.default.removeItem(at: folder)
+        try Data().write(to: folder)
+        let before = state.enabledAgents
+        state.setAgent("codex", enabled: true)
+        #expect(state.enabledAgents == before)
+        #expect(state.actionError?.hasPrefix("Couldn't save projects.json: ") == true)
+    }
+
+    @Test func testSetAgentRejectsAnUnknownId() throws -> Void {
+        let (state, store) = try makeState(tmux: FakeTmux())
+        state.setAgent("nope", enabled: true)
+        #expect(state.actionError == "Unknown agent: nope")
+        #expect(reloaded(store).enabledAgents == ["claude"])
+    }
+
     @Test func testEditsAreRefusedWhileProjectsJsonCannotBeSaved() async throws -> Void {
         let fake = FakeTmux()
         let (state, store) = try makeState(config: .empty, load: false, tmux: fake)
@@ -270,10 +309,8 @@ import Testing
         state.actionError = nil
         state.addProject(path: "/x/new")
         expectRefused("addProject")
-        state.addAgentTemplate(name: "Aider", run: "aider")
-        expectRefused("addAgentTemplate")
-        state.removeAgentTemplate(name: "Claude")
-        expectRefused("removeAgentTemplate")
+        state.setAgent("codex", enabled: true)
+        expectRefused("setAgent")
         await state.removeProject(slug: "es")
         expectRefused("removeProject")
         #expect(try Data(contentsOf: store.url) == original)
@@ -353,25 +390,10 @@ import Testing
         #expect(await !fake.calls.contains { $0.first == "kill-session" })
     }
 
-    @Test func testAgentTemplatesAddRemoveAndRejectDuplicates() throws -> Void {
-        let (state, store) = try makeState(tmux: FakeTmux())
-        #expect(state.validateAgentTemplate(name: "claude", run: "x") == "An agent named “claude” is already in the list.")
-        #expect(state.validateAgentTemplate(name: " ", run: "x") == "Name can't be empty.")
-        #expect(state.validateAgentTemplate(name: "Aider", run: " ") == "Command can't be empty.")
-        #expect(state.validateAgentTemplate(name: "Aider", run: "aider") == nil)
-        state.addAgentTemplate(name: "Aider", run: "aider")
-        #expect(reloaded(store).agents == [AgentTemplate(name: "Claude", run: "claude"), AgentTemplate(name: "Aider", run: "aider")])
-        state.removeAgentTemplate(name: "Claude")
-        #expect(reloaded(store).agents == [AgentTemplate(name: "Aider", run: "aider")])
-        state.removeAgentTemplate(name: "Aider")
-        #expect(reloaded(store).agents == [])
-        #expect(state.agents == [])
-    }
-
     @Test func testNewCustomAgentStartsWithoutTouchingTheList() async throws -> Void {
         let fake = FakeTmux()
         let (state, _) = try makeState(tmux: fake)
-        let before = state.config.agents
+        let before = state.config.enabledAgents
         let session = try #require(await state.newCustomAgent(projectSlug: "es", name: "Claude Resume", run: "claude --resume"))
         #expect(session.hasPrefix("ms-es-agent-"))
         let create = try #require(await fake.calls.first { $0.first == "new-session" })
@@ -381,6 +403,6 @@ import Testing
         #expect(create[n + 1] == "Claude Resume 1")
         let t = try #require(create.firstIndex(of: "@ms_template"))
         #expect(create[t + 1] == "Claude Resume")
-        #expect(state.config.agents == before)
+        #expect(state.config.enabledAgents == before)
     }
 }

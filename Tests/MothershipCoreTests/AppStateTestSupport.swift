@@ -3,7 +3,7 @@ import Foundation
 
 let validConfig = MothershipConfig(
     version: 1,
-    agents: [AgentTemplate(name: "Claude", run: "claude")],
+    enabledAgents: ["claude"],
     projects: [
         ProjectConfig(
             slug: "es", name: "ES", path: "/Users/test/Code/es",

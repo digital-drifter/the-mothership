@@ -23,15 +23,36 @@ struct ProjectStoreTests {
         #expect(loaded.config == .empty)
         #expect(loaded.warning == nil)
         #expect(loaded.canSave)
-        #expect(MothershipConfig.empty.agents == [AgentTemplate(name: "Claude", run: "claude")])
+        #expect(MothershipConfig.empty.enabledAgents == ["claude"])
         #expect(!FileManager.default.fileExists(atPath: url.path))
+    }
+
+    @Test func testAFileWithoutEnabledAgentsEnablesClaude() throws -> Void {
+        let url = try makeDirectory().appendingPathComponent("projects.json")
+        let json = """
+        {"version": 1, "agents": [], "projects": [
+          {"slug": "es", "name": "ES", "path": "/tmp/es", "commands": []}
+        ]}
+        """
+        try Data(json.utf8).write(to: url)
+        let loaded = ProjectStore(url: url).load()
+        #expect(loaded.warning == nil)
+        #expect(loaded.config.enabledAgents == ["claude"])
+        #expect(loaded.config.projects.map(\.slug) == ["es"])
+    }
+
+    @Test func testEnabledAgentsRoundTrip() throws -> Void {
+        let store = ProjectStore(url: try makeDirectory().appendingPathComponent("projects.json"))
+        let config = MothershipConfig(version: 1, enabledAgents: ["codex", "claude"], projects: [])
+        try store.save(config)
+        #expect(store.load().config.enabledAgents == ["codex", "claude"])
     }
 
     @Test func testSaveThenLoadRoundTrips() throws -> Void {
         let store = ProjectStore(url: try makeDirectory().appendingPathComponent("projects.json"))
         let config = MothershipConfig(
             version: 1,
-            agents: [AgentTemplate(name: "Aider", run: "aider --model sonnet")],
+            enabledAgents: ["codex", "claude"],
             projects: [
                 ProjectConfig(
                     slug: "es", name: "ES", path: "/tmp/es",
@@ -132,7 +153,7 @@ struct ProjectStoreTests {
         let url = try makeDirectory().appendingPathComponent("projects.json")
         let store = ProjectStore(url: url)
         func config(_ directory: String?) -> MothershipConfig {
-            MothershipConfig(version: 1, agents: [], projects: [
+            MothershipConfig(version: 1, enabledAgents: [], projects: [
                 ProjectConfig(slug: "es", name: "ES", path: "/tmp/es", commands: [
                     CommandConfig(slug: "vite", name: "Vite", run: "npm run dev", autostart: true, directory: directory)
                 ])
