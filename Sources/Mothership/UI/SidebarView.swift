@@ -135,30 +135,32 @@ struct SidebarView: View {
     }
 
     private func newAgentMenu(_ section: ProjectSection) -> some View {
-        Menu {
-            ForEach(state.agents, id: \.name) { template in
-                Button(template.name) {
-                    Task {
-                        if let id = await state.newAgent(projectSlug: section.id, templateName: template.name) {
-                            navigation.selection = id
-                        }
-                    }
-                }
-            }
-            if !state.agents.isEmpty { Divider() }
-            Button("Custom…") { sheet = .customAgent(projectSlug: section.id) }
-            Button("Manage List…") { sheet = .manageAgents }
+        // A plain Button (not a SwiftUI Menu) so the `+` looks exactly like the Commands and
+        // Terminals buttons; a Menu label renders as a fixed black image in the sidebar.
+        Button {
+            showAgentMenu(section)
         } label: {
             Image(systemName: "plus")
         }
-        // .button + .borderless renders the same as the Commands and Terminals `+` buttons;
-        // .borderlessButton draws a dimmer, offset template image.
-        .menuStyle(.button)
         .buttonStyle(.borderless)
-        .menuIndicator(.hidden)
-        .fixedSize()
         .help("New agent")
         .accessibilityLabel("New agent")
+    }
+
+    private func showAgentMenu(_ section: ProjectSection) -> Void {
+        var entries: [PopUpMenu.Entry] = state.agents.map { template in
+            .item(template.name) {
+                Task {
+                    if let id = await state.newAgent(projectSlug: section.id, templateName: template.name) {
+                        navigation.selection = id
+                    }
+                }
+            }
+        }
+        if !entries.isEmpty { entries.append(.divider) }
+        entries.append(.item("Custom…") { sheet = .customAgent(projectSlug: section.id) })
+        entries.append(.item("Manage List…") { sheet = .manageAgents })
+        PopUpMenu.show(entries)
     }
 
     private func newCommandButton(_ section: ProjectSection) -> some View {
