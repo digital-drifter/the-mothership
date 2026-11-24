@@ -54,6 +54,7 @@ private final class ControlFixture: @unchecked Sendable {
         process.standardError = FileHandle.nullDevice
         try? process.run()
         process.waitUntilExit()
+        removeTmuxSocket(named: socket)
         try? FileManager.default.removeItem(at: directory)
     }
 

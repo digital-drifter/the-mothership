@@ -42,6 +42,7 @@ struct TmuxBareEnvironmentTests {
             kill.standardError = FileHandle.nullDevice
             try? kill.run()
             kill.waitUntilExit()
+            removeTmuxSocket(named: socket)
             try? FileManager.default.removeItem(at: directory)
         }
         try await client.newSession(
