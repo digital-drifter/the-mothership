@@ -157,5 +157,8 @@ struct ProjectStoreTests {
         #expect(resolved("frontend") == "/p/frontend")
         #expect(resolved("a/../b") == "/p/b")
         #expect(resolved("/abs/x") == "/abs/x")
+        #expect(resolved("~/x") == NSHomeDirectory() + "/x")
+        #expect(ProjectConfig.resolve(directory: "~", projectPath: "/p") == NSHomeDirectory())
+        #expect(ProjectConfig.resolve(directory: nil, projectPath: "/q") == "/q")
     }
 }

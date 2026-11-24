@@ -121,6 +121,39 @@ import Testing
         #expect(project("es", in: store)?.commands.first { $0.slug == "api" }?.directory == nil)
     }
 
+    @Test func testAddAndEditCommandStoreAbsolutePathsInsideTheProjectAsRelative() async throws -> Void {
+        let (state, store) = try makeState(tmux: FakeTmux())
+        await state.addCommand(projectSlug: "es", name: "Api", run: "serve", directory: "/Users/test/Code/es/frontend", autostart: false)
+        #expect(project("es", in: store)?.commands.first { $0.slug == "api" }?.directory == "frontend")
+        await state.editCommand(
+            projectSlug: "es", commandSlug: "api", name: "Api", run: "serve", directory: "/Users/test/Code/es", autostart: false)
+        #expect(project("es", in: store)?.commands.first { $0.slug == "api" }?.directory == nil)
+        await state.editCommand(
+            projectSlug: "es", commandSlug: "api", name: "Api", run: "serve", directory: "/opt/other", autostart: false)
+        #expect(project("es", in: store)?.commands.first { $0.slug == "api" }?.directory == "/opt/other")
+    }
+
+    @Test func testTildeDirectoriesStayUnexpandedOutsideTheProjectAndGoRelativeInside() async throws -> Void {
+        let (state, store) = try makeState(tmux: FakeTmux())
+        await state.addCommand(projectSlug: "es", name: "Api", run: "serve", directory: "~/elsewhere", autostart: false)
+        #expect(project("es", in: store)?.commands.first { $0.slug == "api" }?.directory == "~/elsewhere")
+        state.changeFolder(projectSlug: "es", to: NSHomeDirectory() + "/proj")
+        await state.editCommand(
+            projectSlug: "es", commandSlug: "api", name: "Api", run: "serve", directory: "~/proj/web", autostart: false)
+        #expect(project("es", in: store)?.commands.first { $0.slug == "api" }?.directory == "web")
+    }
+
+    @Test func testStartPassesAnAbsoluteDirectoryAsTheExactWorkingDirectory() async throws -> Void {
+        var config = validConfig
+        config.projects[0].commands[0].directory = "/opt/other"
+        let fake = FakeTmux()
+        let (state, _) = try makeState(config: config, tmux: fake)
+        await state.start(commandSlug: "vite", projectSlug: "es")
+        let create = try #require(await fake.calls.first { $0.first == "new-session" })
+        let c = try #require(create.firstIndex(of: "-c"))
+        #expect(create[c + 1] == "/opt/other")
+    }
+
     @Test func testRemoveProjectSavesThenKillsEveryOneOfItsSessions() async throws -> Void {
         let fake = FakeTmux(panes: [
             makePane("ms-es-agent-aaaaaa", kind: .agent, name: "Claude 1", template: "Claude"),

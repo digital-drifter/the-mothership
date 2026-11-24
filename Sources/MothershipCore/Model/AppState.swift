@@ -380,9 +380,16 @@ extension AppState {
         await refresh()
     }
 
-    private static func storedDirectory(_ directory: String) -> String? {
+    /// What to store for a typed directory. Absolute and `~` paths inside the project become relative (blank
+    /// for the project itself, so nil), so a project move keeps working; others are kept as typed.
+    private static func storedDirectory(_ directory: String, projectPath: String?) -> String? {
         let cleaned = trimmed(directory)
-        return cleaned.isEmpty ? nil : cleaned
+        if cleaned.isEmpty { return nil }
+        guard let projectPath, cleaned.hasPrefix("/") || cleaned.hasPrefix("~") else { return cleaned }
+        let stored = RelativePath.storedDirectory(
+            picked: ProjectConfig.resolve(directory: cleaned, projectPath: projectPath), projectPath: projectPath)
+        if stored.isEmpty { return nil }
+        return stored.hasPrefix("/") ? cleaned : stored
     }
 
     /// The message to show next to the form, or nil when the command can be saved.
@@ -396,8 +403,7 @@ extension AppState {
         if run.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "Command can't be empty." }
         if let project = config.projects.first(where: { $0.slug == projectSlug }),
            !Self.trimmed(directory).isEmpty {
-            let resolved = project.workingDirectory(
-                for: CommandConfig(slug: "", name: "", run: "", autostart: false, directory: directory))
+            let resolved = ProjectConfig.resolve(directory: directory, projectPath: project.path)
             if resolved != project.path, !directoryExists(resolved) { return "Folder not found: \(resolved)" }
         }
         return nil
@@ -418,7 +424,7 @@ extension AppState {
         let slug = Slug.unique(cleaned, fallback: "command", taken: Set(project.commands.map(\.slug)))
         let command = CommandConfig(
             slug: slug, name: cleaned, run: run.trimmingCharacters(in: .whitespacesAndNewlines), autostart: autostart,
-            directory: Self.storedDirectory(directory))
+            directory: Self.storedDirectory(directory, projectPath: project.path))
         guard commit({ config in
             guard let index = config.projects.firstIndex(where: { $0.slug == projectSlug }) else { return }
             config.projects[index].commands.append(command)
@@ -441,7 +447,7 @@ extension AppState {
             else { return }
             config.projects[index].commands[at] = CommandConfig(
                 slug: commandSlug, name: cleaned, run: trimmedRun, autostart: autostart,
-                directory: Self.storedDirectory(directory))
+                directory: Self.storedDirectory(directory, projectPath: config.projects[index].path))
         }) else { return }
         let session = SessionName.make(projectSlug: projectSlug, kind: .command, id: commandSlug)
         if panes.contains(where: { $0.sessionName == session }) {

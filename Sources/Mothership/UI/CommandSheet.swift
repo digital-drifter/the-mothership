@@ -75,10 +75,7 @@ struct CommandSheet: View {
     }
 
     private func chooseDirectory() -> Void {
-        let current = ProjectConfig(
-            slug: projectSlug, name: "", path: projectPath,
-            commands: []
-        ).workingDirectory(for: CommandConfig(slug: "", name: "", run: "", autostart: false, directory: directory))
+        let current = ProjectConfig.resolve(directory: directory, projectPath: projectPath)
         var isFolder: ObjCBool = false
         let exists = FileManager.default.fileExists(atPath: current, isDirectory: &isFolder) && isFolder.boolValue
         guard let picked = FolderPicker.choose(title: "Working Directory", prompt: "Choose", startingAt: exists ? current : projectPath)

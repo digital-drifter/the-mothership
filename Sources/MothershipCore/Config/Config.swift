@@ -42,9 +42,16 @@ public struct ProjectConfig: Codable, Equatable, Sendable {
     /// Where `command` runs: the project folder, or the command's own directory (relative to the project
     /// folder, or absolute). Blank means the project folder.
     public func workingDirectory(for command: CommandConfig) -> String {
-        let directory = (command.directory ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        if directory.isEmpty { return path }
-        let full = directory.hasPrefix("/") ? directory : path + "/" + directory
+        Self.resolve(directory: command.directory, projectPath: path)
+    }
+
+    /// Resolves a stored directory: blank is the project folder, `~` is the home folder, a relative path is
+    /// relative to the project folder.
+    public static func resolve(directory: String?, projectPath: String) -> String {
+        var directory = (directory ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if directory.isEmpty { return projectPath }
+        directory = (directory as NSString).expandingTildeInPath
+        let full = directory.hasPrefix("/") ? directory : projectPath + "/" + directory
         return URL(fileURLWithPath: full).standardizedFileURL.path
     }
 }
