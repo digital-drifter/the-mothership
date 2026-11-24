@@ -63,7 +63,7 @@ struct CommandSheet: View {
     }
 
     private func save() -> Void {
-        if let message = state.validateCommand(projectSlug: projectSlug, name: name, run: run, editing: editing?.slug) {
+        if let message = state.validateCommand(projectSlug: projectSlug, name: name, run: run, directory: "", editing: editing?.slug) {
             problem = message
             return
         }
@@ -71,8 +71,8 @@ struct CommandSheet: View {
         Task {
             if let editing {
                 await state.editCommand(
-                    projectSlug: projectSlug, commandSlug: editing.slug, name: name, run: run, autostart: autostart)
-            } else if let id = await state.addCommand(projectSlug: projectSlug, name: name, run: run, autostart: autostart) {
+                    projectSlug: projectSlug, commandSlug: editing.slug, name: name, run: run, directory: "", autostart: autostart)
+            } else if let id = await state.addCommand(projectSlug: projectSlug, name: name, run: run, directory: "", autostart: autostart) {
                 onAdded(id)
             }
             dismiss()

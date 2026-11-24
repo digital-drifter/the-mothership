@@ -38,6 +38,15 @@ public struct ProjectConfig: Codable, Equatable, Sendable {
         self.path = path
         self.commands = commands
     }
+
+    /// Where `command` runs: the project folder, or the command's own directory (relative to the project
+    /// folder, or absolute). Blank means the project folder.
+    public func workingDirectory(for command: CommandConfig) -> String {
+        let directory = (command.directory ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if directory.isEmpty { return path }
+        let full = directory.hasPrefix("/") ? directory : path + "/" + directory
+        return URL(fileURLWithPath: full).standardizedFileURL.path
+    }
 }
 
 public struct CommandConfig: Codable, Equatable, Sendable {
@@ -46,12 +55,15 @@ public struct CommandConfig: Codable, Equatable, Sendable {
     public var name: String
     public var run: String
     public var autostart: Bool
+    /// Where the command runs: relative to the project folder, or absolute. Nil means the project folder.
+    public var directory: String?
 
-    public init(slug: String, name: String, run: String, autostart: Bool) {
+    public init(slug: String, name: String, run: String, autostart: Bool, directory: String? = nil) {
         self.slug = slug
         self.name = name
         self.run = run
         self.autostart = autostart
+        self.directory = directory
     }
 }
 

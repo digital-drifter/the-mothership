@@ -53,6 +53,74 @@ import Testing
         #expect(create[c + 1] == "/new/es")
     }
 
+    private var frontendConfig: MothershipConfig {
+        var config = validConfig
+        config.projects[0].commands[0].directory = "frontend"
+        return config
+    }
+
+    private func missingFrontend(_ path: String) -> Bool { path != "/Users/test/Code/es/frontend" }
+
+    @Test func testStartUsesTheCommandDirectory() async throws -> Void {
+        let fake = FakeTmux()
+        let (state, _) = try makeState(config: frontendConfig, tmux: fake)
+        await state.start(commandSlug: "vite", projectSlug: "es")
+        let create = try #require(await fake.calls.first { $0.first == "new-session" })
+        let c = try #require(create.firstIndex(of: "-c"))
+        #expect(create[c + 1] == "/Users/test/Code/es/frontend")
+
+        let dead = FakeTmux(panes: [makePane("ms-es-cmd-vite", dead: true, kind: .command, name: "Vite")])
+        let (second, _) = try makeState(config: frontendConfig, tmux: dead)
+        await second.refresh()
+        await second.restart(sessionName: "ms-es-cmd-vite")
+        #expect(await dead.calls.contains {
+            $0.first == "respawn-pane" && $0.starts(with: ["respawn-pane", "-k", "-c", "/Users/test/Code/es/frontend"])
+        })
+    }
+
+    @Test func testChangeFolderCarriesRelativeDirectories() async throws -> Void {
+        let fake = FakeTmux()
+        let (state, _) = try makeState(config: frontendConfig, tmux: fake)
+        state.changeFolder(projectSlug: "es", to: "/new/es")
+        await state.start(commandSlug: "vite", projectSlug: "es")
+        let create = try #require(await fake.calls.first { $0.first == "new-session" })
+        let c = try #require(create.firstIndex(of: "-c"))
+        #expect(create[c + 1] == "/new/es/frontend")
+    }
+
+    @Test func testStartInAMissingCommandDirectoryRunsNothing() async throws -> Void {
+        let fake = FakeTmux()
+        let (state, _) = try makeState(config: frontendConfig, tmux: fake, directoryExists: missingFrontend)
+        await state.start(commandSlug: "vite", projectSlug: "es")
+        #expect(state.actionError == "Folder not found: /Users/test/Code/es/frontend")
+        #expect(!(await fake.calls.contains { $0.first == "new-session" }))
+
+        let dead = FakeTmux(panes: [makePane("ms-es-cmd-vite", dead: true, kind: .command, name: "Vite")])
+        let (second, _) = try makeState(config: frontendConfig, tmux: dead, directoryExists: missingFrontend)
+        await second.refresh()
+        await second.restart(sessionName: "ms-es-cmd-vite")
+        #expect(second.actionError == "Folder not found: /Users/test/Code/es/frontend")
+        #expect(!(await dead.calls.contains { $0.first == "respawn-pane" }))
+    }
+
+    @Test func testValidateCommandRejectsAMissingDirectory() throws -> Void {
+        let (state, _) = try makeState(tmux: FakeTmux(), directoryExists: missingFrontend)
+        #expect(state.validateCommand(projectSlug: "es", name: "Web", run: "x", directory: "frontend", editing: nil)
+            == "Folder not found: /Users/test/Code/es/frontend")
+        #expect(state.validateCommand(projectSlug: "es", name: "Web", run: "x", directory: "  ", editing: nil) == nil)
+    }
+
+    @Test func testAddAndEditCommandStoreTheDirectory() async throws -> Void {
+        let (state, store) = try makeState(tmux: FakeTmux())
+        let session = try #require(await state.addCommand(
+            projectSlug: "es", name: "Api", run: "serve", directory: " api ", autostart: false))
+        #expect(session == "ms-es-cmd-api")
+        #expect(project("es", in: store)?.commands.first { $0.slug == "api" }?.directory == "api")
+        await state.editCommand(
+            projectSlug: "es", commandSlug: "api", name: "Api", run: "serve", directory: "", autostart: false)
+        #expect(project("es", in: store)?.commands.first { $0.slug == "api" }?.directory == nil)
+    }
+
     @Test func testRemoveProjectSavesThenKillsEveryOneOfItsSessions() async throws -> Void {
         let fake = FakeTmux(panes: [
             makePane("ms-es-agent-aaaaaa", kind: .agent, name: "Claude 1", template: "Claude"),
@@ -137,7 +205,7 @@ import Testing
         expectUnchanged("addProject")
         state.renameProject(slug: "es", to: "Other")
         expectUnchanged("renameProject")
-        await state.addCommand(projectSlug: "es", name: "Horizon", run: "php artisan horizon", autostart: true)
+        await state.addCommand(projectSlug: "es", name: "Horizon", run: "php artisan horizon", directory: "", autostart: true)
         expectUnchanged("addCommand")
         await state.deleteCommand(projectSlug: "es", commandSlug: "vite")
         expectUnchanged("deleteCommand")
@@ -181,19 +249,19 @@ import Testing
 
     @Test func testValidateCommandRejectsBlankAndDuplicateNames() throws -> Void {
         let (state, _) = try makeState(tmux: FakeTmux())
-        #expect(state.validateCommand(projectSlug: "es", name: "", run: "x", editing: nil) == "Name can't be empty.")
-        #expect(state.validateCommand(projectSlug: "es", name: "  ", run: "x", editing: nil) == "Name can't be empty.")
-        #expect(state.validateCommand(projectSlug: "es", name: "vite", run: "x", editing: nil)
+        #expect(state.validateCommand(projectSlug: "es", name: "", run: "x", directory: "", editing: nil) == "Name can't be empty.")
+        #expect(state.validateCommand(projectSlug: "es", name: "  ", run: "x", directory: "", editing: nil) == "Name can't be empty.")
+        #expect(state.validateCommand(projectSlug: "es", name: "vite", run: "x", directory: "", editing: nil)
             == "A command named “vite” already exists in this project.")
-        #expect(state.validateCommand(projectSlug: "es", name: "Horizon", run: " ", editing: nil) == "Command can't be empty.")
-        #expect(state.validateCommand(projectSlug: "es", name: "Vite", run: "x", editing: "vite") == nil)
-        #expect(state.validateCommand(projectSlug: "es", name: "Horizon", run: "x", editing: nil) == nil)
+        #expect(state.validateCommand(projectSlug: "es", name: "Horizon", run: " ", directory: "", editing: nil) == "Command can't be empty.")
+        #expect(state.validateCommand(projectSlug: "es", name: "Vite", run: "x", directory: "", editing: "vite") == nil)
+        #expect(state.validateCommand(projectSlug: "es", name: "Horizon", run: "x", directory: "", editing: nil) == nil)
     }
 
     @Test func testAddCommandSavesAndStartsIt() async throws -> Void {
         let fake = FakeTmux()
         let (state, store) = try makeState(tmux: fake)
-        let session = await state.addCommand(projectSlug: "es", name: "Horizon", run: "php artisan horizon", autostart: true)
+        let session = await state.addCommand(projectSlug: "es", name: "Horizon", run: "php artisan horizon", directory: "", autostart: true)
         #expect(session == "ms-es-cmd-horizon")
         let saved = try #require(project("es", in: store)?.commands.first { $0.slug == "horizon" })
         #expect(saved.autostart)
@@ -205,7 +273,7 @@ import Testing
 
     @Test func testAddCommandWithADuplicateSlugGetsANumber() async throws -> Void {
         let (state, store) = try makeState(tmux: FakeTmux())
-        let session = await state.addCommand(projectSlug: "es", name: "Vite!", run: "npm run dev", autostart: false)
+        let session = await state.addCommand(projectSlug: "es", name: "Vite!", run: "npm run dev", directory: "", autostart: false)
         #expect(session == "ms-es-cmd-vite-2")
         #expect(project("es", in: store)?.commands.contains { $0.slug == "vite-2" } == true)
     }
@@ -215,7 +283,7 @@ import Testing
         let (state, store) = try makeState(tmux: fake)
         await state.refresh()
         await state.editCommand(
-            projectSlug: "es", commandSlug: "vite", name: "Vite Dev", run: "npm run dev -- --host", autostart: false)
+            projectSlug: "es", commandSlug: "vite", name: "Vite Dev", run: "npm run dev -- --host", directory: "", autostart: false)
         let saved = try #require(project("es", in: store)?.commands.first { $0.slug == "vite" })
         #expect(saved.name == "Vite Dev")
         #expect(saved.run == "npm run dev -- --host")
@@ -231,7 +299,7 @@ import Testing
     @Test func testEditCommandOfAStoppedCommandMakesNoTmuxChange() async throws -> Void {
         let fake = FakeTmux()
         let (state, _) = try makeState(tmux: fake)
-        await state.editCommand(projectSlug: "es", commandSlug: "vite", name: "Vite Dev", run: "x", autostart: true)
+        await state.editCommand(projectSlug: "es", commandSlug: "vite", name: "Vite Dev", run: "x", directory: "", autostart: true)
         #expect(await fake.calls.allSatisfy { $0.first == "list-panes" })
     }
 

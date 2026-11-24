@@ -98,16 +98,16 @@ public final class AppState {
             actionError = "Unknown command: \(projectSlug)/\(commandSlug)"
             return
         }
-        guard folderExists(project) else { return }
+        guard folderExists(project), let directory = commandDirectory(project, command) else { return }
         let session = SessionName.make(projectSlug: projectSlug, kind: .command, id: commandSlug)
         do {
             if let existing = panes.first(where: { $0.sessionName == session }) {
                 if existing.isDead {
-                    try await tmux.respawn(session: session, directory: project.path, command: [shell, "-lc", command.run])
+                    try await tmux.respawn(session: session, directory: directory, command: [shell, "-lc", command.run])
                 }
             } else {
                 try await tmux.newSession(
-                    name: session, directory: project.path, command: [shell, "-lc", command.run],
+                    name: session, directory: directory, command: [shell, "-lc", command.run],
                     metadata: SessionMetadata(project: projectSlug, kind: .command, name: command.name, template: ""))
             }
         } catch {
@@ -238,7 +238,8 @@ public final class AppState {
         do {
             if let (project, command) = configuredCommand(sessionName) {
                 // Commands run what the config says now; agents and terminals rerun their original command.
-                try await tmux.respawn(session: sessionName, directory: project.path, command: [shell, "-lc", command.run])
+                guard let directory = commandDirectory(project, command) else { return }
+                try await tmux.respawn(session: sessionName, directory: directory, command: [shell, "-lc", command.run])
             } else {
                 try await tmux.respawn(session: sessionName)
             }
@@ -292,6 +293,16 @@ public final class AppState {
             return false
         }
         return true
+    }
+
+    /// The command's working directory, or nil (with `actionError` set) when it is missing.
+    private func commandDirectory(_ project: ProjectConfig, _ command: CommandConfig) -> String? {
+        let directory = project.workingDirectory(for: command)
+        if directory != project.path, !directoryExists(directory) {
+            actionError = "Folder not found: \(directory)"
+            return nil
+        }
+        return directory
     }
 
     private func report(_ error: Error) -> Void {
@@ -369,8 +380,13 @@ extension AppState {
         await refresh()
     }
 
+    private static func storedDirectory(_ directory: String) -> String? {
+        let cleaned = trimmed(directory)
+        return cleaned.isEmpty ? nil : cleaned
+    }
+
     /// The message to show next to the form, or nil when the command can be saved.
-    public func validateCommand(projectSlug: String, name: String, run: String, editing commandSlug: String?) -> String? {
+    public func validateCommand(projectSlug: String, name: String, run: String, directory: String, editing commandSlug: String?) -> String? {
         let cleaned = Self.trimmed(name)
         if cleaned.isEmpty { return "Name can't be empty." }
         let others = config.projects.first { $0.slug == projectSlug }?.commands.filter { $0.slug != commandSlug } ?? []
@@ -378,13 +394,19 @@ extension AppState {
             return "A command named \u{201C}\(cleaned)\u{201D} already exists in this project."
         }
         if run.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "Command can't be empty." }
+        if let project = config.projects.first(where: { $0.slug == projectSlug }),
+           !Self.trimmed(directory).isEmpty {
+            let resolved = project.workingDirectory(
+                for: CommandConfig(slug: "", name: "", run: "", autostart: false, directory: directory))
+            if resolved != project.path, !directoryExists(resolved) { return "Folder not found: \(resolved)" }
+        }
         return nil
     }
 
     /// Saves the command and starts it. Returns its session name.
     @discardableResult
-    public func addCommand(projectSlug: String, name: String, run: String, autostart: Bool) async -> String? {
-        if let problem = validateCommand(projectSlug: projectSlug, name: name, run: run, editing: nil) {
+    public func addCommand(projectSlug: String, name: String, run: String, directory: String, autostart: Bool) async -> String? {
+        if let problem = validateCommand(projectSlug: projectSlug, name: name, run: run, directory: directory, editing: nil) {
             actionError = problem
             return nil
         }
@@ -395,7 +417,8 @@ extension AppState {
         let cleaned = Self.trimmed(name)
         let slug = Slug.unique(cleaned, fallback: "command", taken: Set(project.commands.map(\.slug)))
         let command = CommandConfig(
-            slug: slug, name: cleaned, run: run.trimmingCharacters(in: .whitespacesAndNewlines), autostart: autostart)
+            slug: slug, name: cleaned, run: run.trimmingCharacters(in: .whitespacesAndNewlines), autostart: autostart,
+            directory: Self.storedDirectory(directory))
         guard commit({ config in
             guard let index = config.projects.firstIndex(where: { $0.slug == projectSlug }) else { return }
             config.projects[index].commands.append(command)
@@ -405,8 +428,8 @@ extension AppState {
     }
 
     /// Saves the changes. A running session picks up the new name at once; a new run line applies on the next start.
-    public func editCommand(projectSlug: String, commandSlug: String, name: String, run: String, autostart: Bool) async -> Void {
-        if let problem = validateCommand(projectSlug: projectSlug, name: name, run: run, editing: commandSlug) {
+    public func editCommand(projectSlug: String, commandSlug: String, name: String, run: String, directory: String, autostart: Bool) async -> Void {
+        if let problem = validateCommand(projectSlug: projectSlug, name: name, run: run, directory: directory, editing: commandSlug) {
             actionError = problem
             return
         }
@@ -417,7 +440,8 @@ extension AppState {
                   let at = config.projects[index].commands.firstIndex(where: { $0.slug == commandSlug })
             else { return }
             config.projects[index].commands[at] = CommandConfig(
-                slug: commandSlug, name: cleaned, run: trimmedRun, autostart: autostart)
+                slug: commandSlug, name: cleaned, run: trimmedRun, autostart: autostart,
+                directory: Self.storedDirectory(directory))
         }) else { return }
         let session = SessionName.make(projectSlug: projectSlug, kind: .command, id: commandSlug)
         if panes.contains(where: { $0.sessionName == session }) {

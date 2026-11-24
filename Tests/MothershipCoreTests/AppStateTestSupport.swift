@@ -33,7 +33,7 @@ func makePane(
 @MainActor
 func makeState(
     config: MothershipConfig = validConfig, load: Bool = true, tmux: FakeTmux, signals: Signals = Signals(),
-    folderOK: Bool = true
+    folderOK: Bool = true, directoryExists: ((String) -> Bool)? = nil
 ) throws -> (AppState, ProjectStore) {
     let store = ProjectStore(url: FileManager.default.temporaryDirectory
         .appendingPathComponent("ms-\(UUID().uuidString)/projects.json"))
@@ -41,7 +41,7 @@ func makeState(
     let state = AppState(
         tmux: tmux, store: store, shell: "/bin/zsh",
         stopGracePeriod: .milliseconds(10), signalProcessGroup: { signals.add($0) },
-        directoryExists: { _ in folderOK })
+        directoryExists: directoryExists ?? { _ in folderOK })
     if load { state.load() }
     return (state, store)
 }

@@ -129,4 +129,33 @@ struct ProjectStoreTests {
         #expect(loaded.warning == nil)
         #expect(loaded.config.projects.map(\.slug) == ["es"])
     }
+
+    @Test func testCommandDirectoryRoundTripsAndIsOmittedWhenNil() throws -> Void {
+        let url = try makeDirectory().appendingPathComponent("projects.json")
+        let store = ProjectStore(url: url)
+        func config(_ directory: String?) -> MothershipConfig {
+            MothershipConfig(version: 1, agents: [], projects: [
+                ProjectConfig(slug: "es", name: "ES", path: "/tmp/es", commands: [
+                    CommandConfig(slug: "vite", name: "Vite", run: "npm run dev", autostart: true, directory: directory)
+                ])
+            ])
+        }
+        try store.save(config("frontend"))
+        #expect(store.load().config.projects[0].commands[0].directory == "frontend")
+        try store.save(config(nil))
+        #expect(store.load().config.projects[0].commands[0].directory == nil)
+        #expect(!(try String(contentsOf: url, encoding: .utf8)).contains("\"directory\""))
+    }
+
+    @Test func testWorkingDirectoryResolvesBlankRelativeAndAbsolute() -> Void {
+        let project = ProjectConfig(slug: "p", name: "P", path: "/p", commands: [])
+        func resolved(_ directory: String?) -> String {
+            project.workingDirectory(for: CommandConfig(slug: "c", name: "C", run: "x", autostart: false, directory: directory))
+        }
+        #expect(resolved(nil) == "/p")
+        #expect(resolved("  ") == "/p")
+        #expect(resolved("frontend") == "/p/frontend")
+        #expect(resolved("a/../b") == "/p/b")
+        #expect(resolved("/abs/x") == "/abs/x")
+    }
 }
