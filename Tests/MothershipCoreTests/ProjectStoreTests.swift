@@ -41,6 +41,31 @@ struct ProjectStoreTests {
         #expect(loaded.config.projects.map(\.slug) == ["es"])
     }
 
+    @Test func testAFileWithoutOrderListsLoadsWithEmptyOrder() throws -> Void {
+        let url = try makeDirectory().appendingPathComponent("projects.json")
+        let json = """
+        {"version": 1, "enabledAgents": ["claude"], "projects": [
+          {"slug": "es", "name": "ES", "path": "/tmp/es", "commands": []}
+        ]}
+        """
+        try Data(json.utf8).write(to: url)
+        let loaded = ProjectStore(url: url).load()
+        #expect(loaded.warning == nil)
+        #expect(loaded.config.projects.first?.agentOrder == [])
+        #expect(loaded.config.projects.first?.terminalOrder == [])
+    }
+
+    @Test func testOrderListsRoundTrip() throws -> Void {
+        let store = ProjectStore(url: try makeDirectory().appendingPathComponent("projects.json"))
+        let config = MothershipConfig(version: 1, enabledAgents: ["claude"], projects: [
+            ProjectConfig(
+                slug: "es", name: "ES", path: "/tmp/es", commands: [],
+                agentOrder: ["ms-es-agent-2", "ms-es-agent-1"], terminalOrder: ["ms-es-term-3"]),
+        ])
+        try store.save(config)
+        #expect(store.load().config == config)
+    }
+
     @Test func testSavingDropsTheOldAgentsKey() throws -> Void {
         let url = try makeDirectory().appendingPathComponent("projects.json")
         let json = """

@@ -162,6 +162,7 @@ public final class AppState {
         guard knows(sessionName) else { return }
         do {
             try await tmux.killSession(sessionName)
+            forgetSavedPlace(of: sessionName)
         } catch {
             report(error)
         }
@@ -516,6 +517,51 @@ extension AppState {
             return nil
         }
         return await create(projectSlug: projectSlug, kind: .agent, prefix: cleaned, template: cleaned, run: command)
+    }
+
+    // MARK: - Reordering
+
+    /// Moves rows within one group of one project (as the sidebar shows them) and saves the new order.
+    public func move(kind: ItemKind, projectSlug: String, from source: IndexSet, to destination: Int) -> Void {
+        guard let section = sections.first(where: { $0.id == projectSlug && !$0.isOrphan }),
+              config.projects.contains(where: { $0.slug == projectSlug })
+        else { return }
+        let shown: [String]
+        switch kind {
+        case .agent: shown = section.agents.map(\.id)
+        case .command: shown = section.commands.map(\.id)
+        case .terminal: shown = section.terminals.map(\.id)
+        }
+        let moved = SidebarOrder.moving(shown, from: source, to: destination)
+        guard moved != shown else { return }
+        commit { config in
+            guard let index = config.projects.firstIndex(where: { $0.slug == projectSlug }) else { return }
+            switch kind {
+            case .agent: config.projects[index].agentOrder = moved
+            case .terminal: config.projects[index].terminalOrder = moved
+            case .command:
+                // Rows of sessions whose command was deleted are in `moved` too; they are not stored.
+                let position = Dictionary(moved.enumerated().map { ($0.element, $0.offset) }, uniquingKeysWith: { first, _ in first })
+                let commands = config.projects[index].commands
+                config.projects[index].commands = commands.enumerated().sorted { a, b in
+                    let pa = position[SessionName.make(projectSlug: projectSlug, kind: .command, id: a.element.slug)] ?? Int.max
+                    let pb = position[SessionName.make(projectSlug: projectSlug, kind: .command, id: b.element.slug)] ?? Int.max
+                    return pa != pb ? pa < pb : a.offset < b.offset
+                }.map(\.element)
+            }
+        }
+    }
+
+    /// Drops a closed session from the saved order, so a later session reusing its name starts at the bottom.
+    private func forgetSavedPlace(of sessionName: String) -> Void {
+        guard config.projects.contains(where: { $0.agentOrder.contains(sessionName) || $0.terminalOrder.contains(sessionName) })
+        else { return }
+        commit { config in
+            for index in config.projects.indices {
+                config.projects[index].agentOrder.removeAll { $0 == sessionName }
+                config.projects[index].terminalOrder.removeAll { $0 == sessionName }
+            }
+        }
     }
 
     // MARK: - Helpers

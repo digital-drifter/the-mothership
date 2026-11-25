@@ -52,7 +52,8 @@ public enum SidebarBuilder {
             let projectPanes = known.filter { $0.project == project.slug }
             return section(
                 id: project.slug, name: project.name, path: project.path, isOrphan: false,
-                configCommands: project.commands, panes: projectPanes)
+                configCommands: project.commands, agentOrder: project.agentOrder,
+                terminalOrder: project.terminalOrder, panes: projectPanes)
         }
 
         let configSlugs = Set(config.projects.map(\.slug))
@@ -73,7 +74,8 @@ public enum SidebarBuilder {
 
     private static func section(
         id: String, name: String, path: String?, isOrphan: Bool,
-        configCommands: [CommandConfig], panes: [PaneInfo]
+        configCommands: [CommandConfig], agentOrder: [String] = [], terminalOrder: [String] = [],
+        panes: [PaneInfo]
     ) -> ProjectSection {
         var commands: [SidebarItem] = configCommands.map { command in
             let sessionName = SessionName.make(projectSlug: id, kind: .command, id: command.slug)
@@ -89,11 +91,18 @@ public enum SidebarBuilder {
 
         return ProjectSection(
             id: id, name: name, path: path, isOrphan: isOrphan,
-            agents: items(of: .agent, in: panes), commands: commands, terminals: items(of: .terminal, in: panes))
+            agents: items(of: .agent, in: panes, saved: agentOrder), commands: commands,
+            terminals: items(of: .terminal, in: panes, saved: terminalOrder))
     }
 
-    private static func items(of kind: ItemKind, in panes: [PaneInfo]) -> [SidebarItem] {
-        panes.filter { $0.kind == kind }.sorted(by: ordered).map { item(from: $0, orphan: false) }
+    /// The user's saved order first; sessions it does not name follow, oldest first.
+    private static func items(of kind: ItemKind, in panes: [PaneInfo], saved: [String]) -> [SidebarItem] {
+        let byCreation = panes.filter { $0.kind == kind }.sorted(by: ordered)
+        guard !saved.isEmpty else { return byCreation.map { item(from: $0, orphan: false) } }
+        let bySession = Dictionary(byCreation.map { ($0.sessionName, $0) }, uniquingKeysWith: { first, _ in first })
+        return SidebarOrder.applying(saved, to: byCreation.map(\.sessionName))
+            .compactMap { bySession[$0] }
+            .map { item(from: $0, orphan: false) }
     }
 
     private static func ordered(_ a: PaneInfo, _ b: PaneInfo) -> Bool {

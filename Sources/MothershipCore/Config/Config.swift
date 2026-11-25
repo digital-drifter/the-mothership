@@ -37,12 +37,35 @@ public struct ProjectConfig: Codable, Equatable, Sendable {
     /// Absolute folder path.
     public var path: String
     public var commands: [CommandConfig]
+    /// Session names of agents in the order the user arranged them. Sessions not listed come after, oldest first.
+    public var agentOrder: [String]
+    /// Session names of terminals in the order the user arranged them. Sessions not listed come after, oldest first.
+    public var terminalOrder: [String]
 
-    public init(slug: String, name: String, path: String, commands: [CommandConfig]) {
+    public init(
+        slug: String, name: String, path: String, commands: [CommandConfig],
+        agentOrder: [String] = [], terminalOrder: [String] = []
+    ) {
         self.slug = slug
         self.name = name
         self.path = path
         self.commands = commands
+        self.agentOrder = agentOrder
+        self.terminalOrder = terminalOrder
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case slug, name, path, commands, agentOrder, terminalOrder
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        slug = try container.decode(String.self, forKey: .slug)
+        name = try container.decode(String.self, forKey: .name)
+        path = try container.decode(String.self, forKey: .path)
+        commands = try container.decode([CommandConfig].self, forKey: .commands)
+        agentOrder = try container.decodeIfPresent([String].self, forKey: .agentOrder) ?? []
+        terminalOrder = try container.decodeIfPresent([String].self, forKey: .terminalOrder) ?? []
     }
 
     /// Where `command` runs: the project folder, or the command's own directory (relative to the project

@@ -49,6 +49,34 @@ struct SidebarBuilderTests {
         #expect(section.terminals.map(\.id) == ["ms-app-term-yyy", "ms-app-term-zzz"])
     }
 
+    @Test func testAgentsFollowTheSavedOrderThenCreationTime() -> Void {
+        let project = ProjectConfig(
+            slug: "app", name: "App", path: "/tmp/app", commands: [],
+            agentOrder: ["ms-app-agent-3", "ms-app-agent-9", "ms-app-agent-1"])
+        let panes = [
+            pane("ms-app-agent-1", kind: .agent, created: 1),
+            pane("ms-app-agent-2", kind: .agent, created: 2),
+            pane("ms-app-agent-3", kind: .agent, created: 3),
+        ]
+        let section = SidebarBuilder.build(
+            config: MothershipConfig(version: 1, enabledAgents: [], projects: [project]), panes: panes)[0]
+        #expect(section.agents.map(\.id) == ["ms-app-agent-3", "ms-app-agent-1", "ms-app-agent-2"])
+    }
+
+    @Test func testTerminalsFollowTheSavedOrder() -> Void {
+        let project = ProjectConfig(
+            slug: "app", name: "App", path: "/tmp/app", commands: [],
+            terminalOrder: ["ms-app-term-2"])
+        let panes = [
+            pane("ms-app-term-1", kind: .terminal, created: 1),
+            pane("ms-app-term-2", kind: .terminal, created: 2),
+            pane("ms-app-term-3", kind: .terminal, created: 3),
+        ]
+        let section = SidebarBuilder.build(
+            config: MothershipConfig(version: 1, enabledAgents: [], projects: [project]), panes: panes)[0]
+        #expect(section.terminals.map(\.id) == ["ms-app-term-2", "ms-app-term-1", "ms-app-term-3"])
+    }
+
     @Test func testRemovedCommandStillRunningIsOrphan() -> Void {
         let panes = [pane("ms-app-cmd-old", kind: .command, name: "Old")]
         let commands = SidebarBuilder.build(config: config([vite]), panes: panes)[0].commands

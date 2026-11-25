@@ -404,4 +404,83 @@ import Testing
         #expect(create[t + 1] == "Claude Resume")
         #expect(state.config.enabledAgents == before)
     }
+    // MARK: - Reordering
+
+    private func orderedConfig(agentOrder: [String] = [], terminalOrder: [String] = []) -> MothershipConfig {
+        var config = validConfig
+        config.projects[0].agentOrder = agentOrder
+        config.projects[0].terminalOrder = terminalOrder
+        return config
+    }
+
+    @Test func testMovingACommandSavesTheNewOrder() async throws -> Void {
+        let (state, store) = try makeState(tmux: FakeTmux())
+        state.move(kind: .command, projectSlug: "es", from: IndexSet(integer: 0), to: 2)
+        #expect(project("es", in: store)?.commands.map(\.slug) == ["queue", "vite"])
+        #expect(state.sections[0].commands.map(\.id) == ["ms-es-cmd-queue", "ms-es-cmd-vite"])
+    }
+
+    @Test func testMovingACommandPastAnOrphanRowKeepsEveryCommand() async throws -> Void {
+        let fake = FakeTmux(panes: [makePane("ms-es-cmd-old", kind: .command, name: "Old")])
+        let (state, store) = try makeState(tmux: fake)
+        await state.refresh()
+        #expect(state.sections[0].commands.map(\.id) == ["ms-es-cmd-vite", "ms-es-cmd-queue", "ms-es-cmd-old"])
+        state.move(kind: .command, projectSlug: "es", from: IndexSet(integer: 0), to: 3)
+        #expect(project("es", in: store)?.commands.map(\.slug) == ["queue", "vite"])
+    }
+
+    @Test func testMovingAnAgentSavesTheOrderAndDropsClosedOnes() async throws -> Void {
+        let fake = FakeTmux(panes: [
+            makePane("ms-es-agent-1", kind: .agent, name: "One", created: 1),
+            makePane("ms-es-agent-2", kind: .agent, name: "Two", created: 2),
+        ])
+        let (state, store) = try makeState(config: orderedConfig(agentOrder: ["ms-es-agent-gone"]), tmux: fake)
+        await state.refresh()
+        state.move(kind: .agent, projectSlug: "es", from: IndexSet(integer: 1), to: 0)
+        #expect(project("es", in: store)?.agentOrder == ["ms-es-agent-2", "ms-es-agent-1"])
+        #expect(state.sections[0].agents.map(\.id) == ["ms-es-agent-2", "ms-es-agent-1"])
+    }
+
+    @Test func testMovingATerminalSavesTheOrder() async throws -> Void {
+        let fake = FakeTmux(panes: [
+            makePane("ms-es-term-1", kind: .terminal, name: "One", created: 1),
+            makePane("ms-es-term-2", kind: .terminal, name: "Two", created: 2),
+        ])
+        let (state, store) = try makeState(tmux: fake)
+        await state.refresh()
+        state.move(kind: .terminal, projectSlug: "es", from: IndexSet(integer: 0), to: 2)
+        #expect(project("es", in: store)?.terminalOrder == ["ms-es-term-2", "ms-es-term-1"])
+        #expect(project("es", in: store)?.agentOrder == [])
+        #expect(state.sections[0].terminals.map(\.id) == ["ms-es-term-2", "ms-es-term-1"])
+    }
+
+    @Test func testAMoveThatCannotBeSavedChangesNothing() async throws -> Void {
+        let (state, store) = try makeState(tmux: FakeTmux())
+        let folder = store.url.deletingLastPathComponent()
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: folder.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: folder.path) }
+        state.move(kind: .command, projectSlug: "es", from: IndexSet(integer: 0), to: 2)
+        #expect(state.sections[0].commands.map(\.id) == ["ms-es-cmd-vite", "ms-es-cmd-queue"])
+        #expect(state.config.projects[0].commands.map(\.slug) == ["vite", "queue"])
+        #expect(state.actionError != nil)
+    }
+
+    @Test func testAMoveInAnUnknownProjectDoesNothing() async throws -> Void {
+        let (state, _) = try makeState(tmux: FakeTmux())
+        state.move(kind: .command, projectSlug: "nope", from: IndexSet(integer: 0), to: 2)
+        #expect(state.config == validConfig)
+        #expect(state.actionError == nil)
+    }
+
+    @Test func testClosingASessionForgetsItsSavedPlace() async throws -> Void {
+        let fake = FakeTmux(panes: [
+            makePane("ms-es-term-1", kind: .terminal, name: "One", created: 1),
+            makePane("ms-es-term-2", kind: .terminal, name: "Two", created: 2),
+        ])
+        let (state, store) = try makeState(
+            config: orderedConfig(terminalOrder: ["ms-es-term-1", "ms-es-term-2"]), tmux: fake)
+        await state.refresh()
+        await state.close(sessionName: "ms-es-term-1")
+        #expect(project("es", in: store)?.terminalOrder == ["ms-es-term-2"])
+    }
 }
