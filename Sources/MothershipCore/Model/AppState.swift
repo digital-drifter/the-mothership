@@ -427,7 +427,7 @@ extension AppState {
         return nil
     }
 
-    /// Saves the command and starts it. Returns its session name.
+    /// Saves the command without starting it. Returns its session name.
     @discardableResult
     public func addCommand(projectSlug: String, name: String, run: String, directory: String, autostart: Bool) async -> String? {
         if let problem = validateCommand(projectSlug: projectSlug, name: name, run: run, directory: directory, editing: nil) {
@@ -447,7 +447,6 @@ extension AppState {
             guard let index = config.projects.firstIndex(where: { $0.slug == projectSlug }) else { return }
             config.projects[index].commands.append(command)
         }) else { return nil }
-        await start(commandSlug: slug, projectSlug: projectSlug)
         return SessionName.make(projectSlug: projectSlug, kind: .command, id: slug)
     }
 

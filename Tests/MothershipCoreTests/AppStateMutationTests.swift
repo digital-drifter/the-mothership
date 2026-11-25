@@ -328,7 +328,7 @@ import Testing
         #expect(state.validateCommand(projectSlug: "es", name: "Horizon", run: "x", directory: "", editing: nil) == nil)
     }
 
-    @Test func testAddCommandSavesAndStartsIt() async throws -> Void {
+    @Test func testAddCommandSavesItWithoutStartingIt() async throws -> Void {
         let fake = FakeTmux()
         let (state, store) = try makeState(tmux: fake)
         let session = await state.addCommand(projectSlug: "es", name: "Horizon", run: "php artisan horizon", directory: "", autostart: true)
@@ -336,9 +336,8 @@ import Testing
         let saved = try #require(project("es", in: store)?.commands.first { $0.slug == "horizon" })
         #expect(saved.autostart)
         #expect(saved.run == "php artisan horizon")
-        let create = try #require(await fake.calls.first { $0.first == "new-session" })
-        let s = try #require(create.firstIndex(of: "/bin/zsh"))
-        #expect(Array(create[s...].prefix(3)) == ["/bin/zsh", "-lc", "php artisan horizon"])
+        #expect(await fake.calls.contains { $0.first == "new-session" } == false)
+        #expect(state.sections.first?.commands.last?.status == .notStarted)
     }
 
     @Test func testAddCommandWithADuplicateSlugGetsANumber() async throws -> Void {
