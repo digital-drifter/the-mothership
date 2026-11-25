@@ -483,4 +483,18 @@ import Testing
         await state.close(sessionName: "ms-es-term-1")
         #expect(project("es", in: store)?.terminalOrder == ["ms-es-term-2"])
     }
+
+    @Test func testARefreshThatChangesNothingDoesNotRedrawTheSidebar() async throws -> Void {
+        let fake = FakeTmux(panes: [makePane("ms-es-term-1", kind: .terminal, name: "One")])
+        let (state, _) = try makeState(tmux: fake)
+        await state.refresh()
+        let changed = Signals()
+        withObservationTracking {
+            _ = state.sections
+        } onChange: {
+            changed.add(1)
+        }
+        await state.refresh()
+        #expect(changed.all.isEmpty)
+    }
 }
