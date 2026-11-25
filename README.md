@@ -26,7 +26,7 @@ Then build the app and copy it to Applications:
 
 1. **Add a project:** click **Add Project** at the bottom of the sidebar (or press ⌘O) and choose the project's folder.
 2. **Start an agent:** click **+** next to Agents and pick one. **Custom…** runs any one-off command.
-3. **Add a command:** click **+** next to Commands and give it a name and a command such as `npm run dev`. It is added stopped: click the play button on its row to start it, and the stop button to stop it. Tick **Start automatically** to have it start whenever Mothership opens. Right-click a command to restart, edit or delete it.
+3. **Add a command:** click **+** next to Commands and give it a name and a command such as `npm run dev`. It is added stopped: click the play button on its row to start it, and the stop button to stop it. Tick **Start automatically** to have it start whenever Mothership opens. Right-click a command for the same start and stop, plus restart, edit and delete.
 4. **Open a terminal:** click **+** next to Terminals for a shell in the project folder.
 5. **Choose your agents:** open **Settings** (⌘,) and tick the agents you use. Only those appear in the Agents **+** menu.
 

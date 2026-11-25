@@ -93,6 +93,18 @@ import Testing
         #expect(await fake.calls.contains(["send-keys", "-t", "=ms-es-cmd-vite:", "C-c"]))
     }
 
+    @Test func testASecondStopWhileOneIsUnderWayDoesNothing() async throws -> Void {
+        let fake = FakeTmux(panes: [makePane("ms-es-cmd-vite", pid: 4242, kind: .command, name: "Vite")])
+        let signals = Signals()
+        let (state, _) = try makeState(tmux: fake, signals: signals)
+        await state.refresh()
+        async let first: Void = state.stop(sessionName: "ms-es-cmd-vite")
+        async let second: Void = state.stop(sessionName: "ms-es-cmd-vite")
+        _ = await (first, second)
+        #expect(await fake.calls.filter { $0.first == "send-keys" }.count == 1)
+        #expect(signals.all == [4242])
+    }
+
     @Test func testStopDoesNotSignalWhenPaneDiesInTime() async throws -> Void {
         let live = makePane("ms-es-cmd-vite", pid: 4242, kind: .command, name: "Vite")
         let dead = makePane("ms-es-cmd-vite", dead: true, kind: .command, name: "Vite")

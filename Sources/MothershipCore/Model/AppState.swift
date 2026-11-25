@@ -32,6 +32,7 @@ public final class AppState {
     @ObservationIgnored private var pendingNames: [String: Set<String>] = [:]
     /// Command sessions with a Start in flight, so overlapping Starts create each session only once.
     @ObservationIgnored private var startingCommands: Set<String> = []
+    @ObservationIgnored private var stoppingSessions: Set<String> = []
 
     public init(
         tmux: TmuxCommanding, store: ProjectStore, shell: String,
@@ -133,6 +134,10 @@ public final class AppState {
 
     public func stop(sessionName: String) async -> Void {
         guard knows(sessionName) else { return }
+        // A second Stop during the grace period (a double click) would interrupt the process again.
+        guard !stoppingSessions.contains(sessionName) else { return }
+        stoppingSessions.insert(sessionName)
+        defer { stoppingSessions.remove(sessionName) }
         do {
             // The process being stopped; a process started during the grace period is left alone.
             let target = try await tmux.listPanes()
@@ -521,33 +526,40 @@ extension AppState {
 
     // MARK: - Reordering
 
-    /// Moves rows within one group of one project (as the sidebar shows them) and saves the new order.
-    public func move(kind: ItemKind, projectSlug: String, from source: IndexSet, to destination: Int) -> Void {
+    /// Moves rows within one group of one project and saves the new order. `shown` is the group's row ids
+    /// as the sidebar showed them when the drag happened (the live list can have changed since); nil means
+    /// the current rows.
+    public func move(
+        kind: ItemKind, projectSlug: String, shown rendered: [String]? = nil, from source: IndexSet, to destination: Int
+    ) -> Void {
         guard let section = sections.first(where: { $0.id == projectSlug && !$0.isOrphan }),
               config.projects.contains(where: { $0.slug == projectSlug })
         else { return }
         let shown: [String]
         switch kind {
-        case .agent: shown = section.agents.map(\.id)
-        case .command: shown = section.commands.map(\.id)
-        case .terminal: shown = section.terminals.map(\.id)
+        case .agent: shown = rendered ?? section.agents.map(\.id)
+        case .command: shown = rendered ?? section.commands.map(\.id)
+        case .terminal: shown = rendered ?? section.terminals.map(\.id)
         }
         let moved = SidebarOrder.moving(shown, from: source, to: destination)
-        guard moved != shown else { return }
+        guard moved != shown, let project = config.projects.first(where: { $0.slug == projectSlug }) else { return }
+        var commands = project.commands
+        if kind == .command {
+            // Rows of sessions whose command was deleted are in `moved` too; they are not stored.
+            let position = Dictionary(moved.enumerated().map { ($0.element, $0.offset) }, uniquingKeysWith: { first, _ in first })
+            commands = commands.enumerated().sorted { a, b in
+                let pa = position[SessionName.make(projectSlug: projectSlug, kind: .command, id: a.element.slug)] ?? Int.max
+                let pb = position[SessionName.make(projectSlug: projectSlug, kind: .command, id: b.element.slug)] ?? Int.max
+                return pa != pb ? pa < pb : a.offset < b.offset
+            }.map(\.element)
+            guard commands != project.commands else { return }
+        }
         commit { config in
             guard let index = config.projects.firstIndex(where: { $0.slug == projectSlug }) else { return }
             switch kind {
             case .agent: config.projects[index].agentOrder = moved
             case .terminal: config.projects[index].terminalOrder = moved
-            case .command:
-                // Rows of sessions whose command was deleted are in `moved` too; they are not stored.
-                let position = Dictionary(moved.enumerated().map { ($0.element, $0.offset) }, uniquingKeysWith: { first, _ in first })
-                let commands = config.projects[index].commands
-                config.projects[index].commands = commands.enumerated().sorted { a, b in
-                    let pa = position[SessionName.make(projectSlug: projectSlug, kind: .command, id: a.element.slug)] ?? Int.max
-                    let pb = position[SessionName.make(projectSlug: projectSlug, kind: .command, id: b.element.slug)] ?? Int.max
-                    return pa != pb ? pa < pb : a.offset < b.offset
-                }.map(\.element)
+            case .command: config.projects[index].commands = commands
             }
         }
     }
@@ -556,12 +568,16 @@ extension AppState {
     private func forgetSavedPlace(of sessionName: String) -> Void {
         guard config.projects.contains(where: { $0.agentOrder.contains(sessionName) || $0.terminalOrder.contains(sessionName) })
         else { return }
-        commit { config in
+        // Housekeeping only: a name left behind is skipped when the sidebar is built, so a failed save
+        // is not worth an error when the close itself worked.
+        let errorBefore = actionError
+        let saved = commit { config in
             for index in config.projects.indices {
                 config.projects[index].agentOrder.removeAll { $0 == sessionName }
                 config.projects[index].terminalOrder.removeAll { $0 == sessionName }
             }
         }
+        if !saved { actionError = errorBefore }
     }
 
     // MARK: - Helpers

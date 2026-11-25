@@ -497,4 +497,51 @@ import Testing
         await state.refresh()
         #expect(changed.all.isEmpty)
     }
+
+    private func makeReadOnly(_ store: ProjectStore) throws -> URL {
+        let folder = store.url.deletingLastPathComponent()
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: folder.path)
+        return folder
+    }
+
+    private func makeWritable(_ folder: URL) -> Void {
+        try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: folder.path)
+    }
+
+    @Test func testAMoveUsesTheRowsTheSidebarShowed() async throws -> Void {
+        // The sidebar still showed agent-3 when the drag started; it has closed since.
+        let fake = FakeTmux(panes: [
+            makePane("ms-es-agent-1", kind: .agent, name: "One", created: 1),
+            makePane("ms-es-agent-2", kind: .agent, name: "Two", created: 2),
+        ])
+        let (state, store) = try makeState(tmux: fake)
+        await state.refresh()
+        state.move(
+            kind: .agent, projectSlug: "es", shown: ["ms-es-agent-1", "ms-es-agent-2", "ms-es-agent-3"],
+            from: IndexSet(integer: 1), to: 0)
+        #expect(project("es", in: store)?.agentOrder == ["ms-es-agent-2", "ms-es-agent-1", "ms-es-agent-3"])
+        #expect(state.sections[0].agents.map(\.id) == ["ms-es-agent-2", "ms-es-agent-1"])
+    }
+
+    @Test func testDraggingAnOrphanCommandRowSavesNothing() async throws -> Void {
+        let fake = FakeTmux(panes: [makePane("ms-es-cmd-old", kind: .command, name: "Old")])
+        let (state, store) = try makeState(tmux: fake)
+        await state.refresh()
+        let folder = try makeReadOnly(store)
+        defer { makeWritable(folder) }
+        state.move(kind: .command, projectSlug: "es", from: IndexSet(integer: 2), to: 0)
+        #expect(state.actionError == nil)
+        #expect(state.config.projects[0].commands.map(\.slug) == ["vite", "queue"])
+    }
+
+    @Test func testClosingASessionWhenTheOrderCannotBeSavedReportsNoError() async throws -> Void {
+        let fake = FakeTmux(panes: [makePane("ms-es-term-1", kind: .terminal, name: "One")])
+        let (state, store) = try makeState(config: orderedConfig(terminalOrder: ["ms-es-term-1"]), tmux: fake)
+        await state.refresh()
+        let folder = try makeReadOnly(store)
+        defer { makeWritable(folder) }
+        await state.close(sessionName: "ms-es-term-1")
+        #expect(state.actionError == nil)
+        #expect(await fake.calls.contains { $0.first == "kill-session" })
+    }
 }

@@ -111,6 +111,7 @@ struct SidebarView: View {
             ForEach(section.commands) { item in
                 row(item, in: section) { runButton(item, in: section) }
                     .contextMenu { commandMenu(item, in: section) }
+                    .moveDisabled(item.isOrphan)
             }
             .onMove(perform: mover(.command, in: section))
         }
@@ -153,7 +154,7 @@ struct SidebarView: View {
             Button {
                 Task { await state.stop(sessionName: item.id) }
             } label: {
-                Image(systemName: "stop.fill").imageScale(.small)
+                Image(systemName: "stop.fill").imageScale(.small).foregroundStyle(.secondary)
             }
             .buttonStyle(.borderless)
             .help("Stop")
@@ -162,7 +163,7 @@ struct SidebarView: View {
             Button {
                 Task { await state.start(commandSlug: item.commandSlug(in: section), projectSlug: section.id) }
             } label: {
-                Image(systemName: "play.fill").imageScale(.small)
+                Image(systemName: "play.fill").imageScale(.small).foregroundStyle(.secondary)
             }
             .buttonStyle(.borderless)
             .disabled(item.isOrphan || section.isOrphan)
@@ -174,8 +175,15 @@ struct SidebarView: View {
     /// Dragging reorders rows within their own group; sessions of a removed project cannot be reordered.
     private func mover(_ kind: ItemKind, in section: ProjectSection) -> ((IndexSet, Int) -> Void)? {
         guard !section.isOrphan else { return nil }
+        // The offsets refer to the rows as drawn here, which the next refresh may already have changed.
+        let shown: [SidebarItem]
+        switch kind {
+        case .agent: shown = section.agents
+        case .command: shown = section.commands
+        case .terminal: shown = section.terminals
+        }
         return { source, destination in
-            state.move(kind: kind, projectSlug: section.id, from: source, to: destination)
+            state.move(kind: kind, projectSlug: section.id, shown: shown.map(\.id), from: source, to: destination)
         }
     }
 
