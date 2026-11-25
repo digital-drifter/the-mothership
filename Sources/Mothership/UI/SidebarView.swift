@@ -102,14 +102,17 @@ struct SidebarView: View {
             ForEach(section.agents) { item in
                 row(item, in: section).contextMenu { sessionMenu(item) }
             }
+            .onMove(perform: mover(.agent, in: section))
         }
         if !section.isOrphan || !section.commands.isEmpty {
             GroupHeader(title: "Commands") {
                 if !section.isOrphan { newCommandButton(section) }
             }
             ForEach(section.commands) { item in
-                row(item, in: section).contextMenu { commandMenu(item, in: section) }
+                row(item, in: section) { runButton(item, in: section) }
+                    .contextMenu { commandMenu(item, in: section) }
             }
+            .onMove(perform: mover(.command, in: section))
         }
         if !section.isOrphan || !section.terminals.isEmpty {
             GroupHeader(title: "Terminals") {
@@ -118,18 +121,62 @@ struct SidebarView: View {
             ForEach(section.terminals) { item in
                 row(item, in: section).contextMenu { sessionMenu(item) }
             }
+            .onMove(perform: mover(.terminal, in: section))
         }
     }
 
     private func row(_ item: SidebarItem, in section: ProjectSection) -> some View {
-        Label {
-            Text(item.displayName)
-        } icon: {
-            StatusDot(status: item.status)
+        row(item, in: section) { EmptyView() }
+    }
+
+    private func row<Accessory: View>(
+        _ item: SidebarItem, in section: ProjectSection, @ViewBuilder accessory: () -> Accessory
+    ) -> some View {
+        HStack(spacing: 4) {
+            Label {
+                Text(item.displayName)
+            } icon: {
+                StatusDot(status: item.status)
+            }
+            .accessibilityValue(StatusDot.accessibilityText(for: item.status))
+            Spacer(minLength: 0)
+            accessory()
         }
-        .accessibilityValue(StatusDot.accessibilityText(for: item.status))
         .opacity(item.isOrphan || section.isOrphan ? 0.5 : 1)
         .tag(Optional(item.id))
+    }
+
+    /// Stop while the command runs, Start otherwise.
+    @ViewBuilder
+    private func runButton(_ item: SidebarItem, in section: ProjectSection) -> some View {
+        if item.status == .running {
+            Button {
+                Task { await state.stop(sessionName: item.id) }
+            } label: {
+                Image(systemName: "stop.fill").imageScale(.small)
+            }
+            .buttonStyle(.borderless)
+            .help("Stop")
+            .accessibilityLabel("Stop \(item.displayName)")
+        } else {
+            Button {
+                Task { await state.start(commandSlug: item.commandSlug(in: section), projectSlug: section.id) }
+            } label: {
+                Image(systemName: "play.fill").imageScale(.small)
+            }
+            .buttonStyle(.borderless)
+            .disabled(item.isOrphan || section.isOrphan)
+            .help("Start")
+            .accessibilityLabel("Start \(item.displayName)")
+        }
+    }
+
+    /// Dragging reorders rows within their own group; sessions of a removed project cannot be reordered.
+    private func mover(_ kind: ItemKind, in section: ProjectSection) -> ((IndexSet, Int) -> Void)? {
+        guard !section.isOrphan else { return nil }
+        return { source, destination in
+            state.move(kind: kind, projectSlug: section.id, from: source, to: destination)
+        }
     }
 
     private func newAgentMenu(_ section: ProjectSection) -> some View {
